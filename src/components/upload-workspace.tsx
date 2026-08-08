@@ -12,14 +12,17 @@ import {
   Check,
   Clipboard,
   Copy,
+  ExternalLink,
   File,
   FileAudio,
   FileImage,
   FileText,
   FileVideo,
   Inbox,
+  RotateCcw,
   Trash2,
   Upload,
+  X,
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -36,6 +39,7 @@ import {
 } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -46,8 +50,11 @@ import { cn } from "@/lib/utils"
 
 const MAX_CONCURRENT = 3
 const FORMATS: LinkFormat[] = ["url", "markdown", "bbcode", "html"]
+const PHOTO_LIMIT = 10 * 1024 * 1024
+const TELEGRAM_FILE_LIMIT = 20 * 1024 * 1024
+const PASTE_DRAFT_KEY = "telegraph-image:paste-draft"
 
-type UploadStatus = "queued" | "uploading" | "success" | "error"
+type UploadStatus = "queued" | "uploading" | "success" | "error" | "cancelled"
 type ImageUploadMode = "document" | "photo"
 type WorkspaceMode = "files" | "pastebin"
 
@@ -55,6 +62,7 @@ interface UploadItem {
   error?: string
   file: globalThis.File
   id: string
+  imageUploadMode: ImageUploadMode
   previewUrl?: string
   progress: number
   resultUrl?: string
@@ -81,6 +89,7 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("files")
   const [pasteFileName, setPasteFileName] = useState("paste.txt")
   const [pasteContent, setPasteContent] = useState("")
+  const draftLoaded = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const activeUploads = useRef(0)
   const pendingUploads = useRef<PendingUpload[]>([])
@@ -105,6 +114,16 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
     [completed, format],
   )
 
+  const pasteByteSize = useMemo(() => new TextEncoder().encode(pasteContent).byteLength, [pasteContent])
+  const normalizedPasteName = useMemo(
+    () => (pasteFileName.trim() || "paste.txt").replace(/[\\/]/g, "-"),
+    [pasteFileName],
+  )
+  const pasteUploadName = useMemo(
+    () => /\.[a-z0-9]+$/i.test(normalizedPasteName) ? normalizedPasteName : `${normalizedPasteName}.txt`,
+    [normalizedPasteName],
+  )
+
   useEffect(() => {
     const urls = previewUrls.current
     const currentRequests = requests.current
@@ -113,6 +132,34 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
       currentRequests.forEach((request) => request.abort())
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PASTE_DRAFT_KEY)
+      if (saved) {
+        const draft = JSON.parse(saved) as { content?: string; fileName?: string }
+        if (typeof draft.fileName === "string") setPasteFileName(draft.fileName)
+        if (typeof draft.content === "string") setPasteContent(draft.content)
+      }
+    } catch {
+      // Ignore unavailable storage and malformed drafts.
+    } finally {
+      draftLoaded.current = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!draftLoaded.current) return
+    const timeout = window.setTimeout(() => {
+      try {
+        if (!pasteContent && pasteFileName === "paste.txt") localStorage.removeItem(PASTE_DRAFT_KEY)
+        else localStorage.setItem(PASTE_DRAFT_KEY, JSON.stringify({ content: pasteContent, fileName: pasteFileName }))
+      } catch {
+        // Draft persistence is an enhancement; uploads still work without it.
+      }
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [pasteContent, pasteFileName])
 
   useEffect(() => {
     const handlePaste = (event: globalThis.ClipboardEvent) => {
@@ -131,18 +178,36 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
   function enqueueFiles(files: globalThis.File[]) {
     if (!files.length) return
 
+    let invalidCount = 0
     const additions = files.map<UploadItem>((file) => {
       const id = crypto.randomUUID()
-      const previewUrl = file.type.startsWith("image/")
+      const previewUrl = isPreviewableImage(file)
         ? URL.createObjectURL(file)
         : undefined
       if (previewUrl) previewUrls.current.add(previewUrl)
-      pendingUploads.current.push({ file, id, imageUploadMode })
-      return { file, id, previewUrl, progress: 0, status: "queued" }
+      const error = getSizeError(file, imageUploadMode)
+      if (error) invalidCount += 1
+      else pendingUploads.current.push({ file, id, imageUploadMode })
+      return {
+        error,
+        file,
+        id,
+        imageUploadMode,
+        previewUrl,
+        progress: 0,
+        status: error ? "error" : "queued",
+      }
     })
 
     setItems((current) => [...current, ...additions])
+    if (invalidCount) toast.error(copy.filesTooLarge(invalidCount))
     queueMicrotask(pumpQueue)
+  }
+
+  function getSizeError(file: globalThis.File, mode: ImageUploadMode) {
+    if (!imageUploadModeAvailable) return undefined
+    const limit = file.type.startsWith("image/") && mode === "photo" ? PHOTO_LIMIT : TELEGRAM_FILE_LIMIT
+    return file.size > limit ? copy.fileTooLarge(formatSize(limit, locale)) : undefined
   }
 
   function pumpQueue() {
@@ -218,6 +283,42 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
     pumpQueue()
   }
 
+  function cancelItem(item: UploadItem) {
+    pendingUploads.current = pendingUploads.current.filter((pending) => pending.id !== item.id)
+    const request = requests.current.get(item.id)
+    if (request) request.abort()
+    updateItem(item.id, { error: undefined, progress: 0, status: "cancelled" })
+  }
+
+  function removeItem(item: UploadItem) {
+    pendingUploads.current = pendingUploads.current.filter((pending) => pending.id !== item.id)
+    requests.current.get(item.id)?.abort()
+    if (item.previewUrl) {
+      URL.revokeObjectURL(item.previewUrl)
+      previewUrls.current.delete(item.previewUrl)
+    }
+    setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))
+  }
+
+  function retryItem(item: UploadItem) {
+    const error = getSizeError(item.file, imageUploadMode)
+    if (error) {
+      updateItem(item.id, { error, imageUploadMode, progress: 0, status: "error" })
+      toast.error(error)
+      return
+    }
+    pendingUploads.current = pendingUploads.current.filter((pending) => pending.id !== item.id)
+    pendingUploads.current.push({ file: item.file, id: item.id, imageUploadMode })
+    updateItem(item.id, {
+      error: undefined,
+      imageUploadMode,
+      progress: 0,
+      resultUrl: undefined,
+      status: "queued",
+    })
+    queueMicrotask(pumpQueue)
+  }
+
   function clearAll() {
     pendingUploads.current = []
     const activeRequests = Array.from(requests.current.values())
@@ -277,15 +378,21 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
   function uploadPaste() {
     if (!pasteContent.trim()) return
 
-    const normalizedName = (pasteFileName.trim() || "paste.txt").replace(/[\\/]/g, "-")
-    const fileName = /\.[a-z0-9]+$/i.test(normalizedName)
-      ? normalizedName
-      : `${normalizedName}.txt`
     enqueueFiles([
-      new globalThis.File([pasteContent], fileName, {
+      new globalThis.File([pasteContent], pasteUploadName, {
         type: "text/plain;charset=utf-8",
       }),
     ])
+  }
+
+  function clearPasteDraft() {
+    setPasteFileName("paste.txt")
+    setPasteContent("")
+    try {
+      localStorage.removeItem(PASTE_DRAFT_KEY)
+    } catch {
+      // Ignore unavailable storage.
+    }
   }
 
   return (
@@ -315,35 +422,33 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
               <CardHeader>
                 <CardTitle>{copy.uploadTitle}</CardTitle>
                 <CardDescription>{copy.uploadDescription}</CardDescription>
-              </CardHeader>
-              <CardContent>
                 {imageUploadModeAvailable ? (
-                  <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3">
-                    <div className="min-w-0">
-                      <label htmlFor="image-upload-mode" className="text-sm font-medium">
-                        {copy.imageUploadModeTitle}
+                  <CardAction>
+                    <div
+                      className="flex items-center gap-2"
+                      title={imageUploadMode === "document"
+                        ? copy.imageUploadModeOriginalDescription
+                        : copy.imageUploadModeOptimizedDescription}
+                    >
+                      <label htmlFor="image-upload-mode" className="text-xs font-medium text-muted-foreground">
+                        {copy.imageUploadModeOriginal}
                       </label>
-                      <p id="image-upload-mode-description" className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {imageUploadMode === "document"
-                          ? copy.imageUploadModeOriginalDescription
-                          : copy.imageUploadModeOptimizedDescription}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1.5">
                       <Switch
                         id="image-upload-mode"
                         checked={imageUploadMode === "document"}
                         onCheckedChange={(checked) => setImageUploadMode(checked ? "document" : "photo")}
                         aria-describedby="image-upload-mode-description"
                       />
-                      <span className="text-xs font-medium text-muted-foreground" aria-hidden="true">
+                      <span id="image-upload-mode-description" className="sr-only">
                         {imageUploadMode === "document"
-                          ? copy.imageUploadModeOriginal
-                          : copy.imageUploadModeOptimized}
+                          ? copy.imageUploadModeOriginalDescription
+                          : copy.imageUploadModeOptimizedDescription}
                       </span>
                     </div>
-                  </div>
+                  </CardAction>
                 ) : null}
+              </CardHeader>
+              <CardContent>
                 <div
                   id="dropzone"
                   role="button"
@@ -431,6 +536,9 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
                     autoComplete="off"
                     spellCheck={false}
                   />
+                  {pasteUploadName !== (pasteFileName.trim() || "paste.txt") ? (
+                    <p className="text-xs text-muted-foreground">{copy.pasteFileNameAdjusted(pasteUploadName)}</p>
+                  ) : null}
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col gap-2">
                   <div className="flex items-center justify-between gap-4">
@@ -438,18 +546,28 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
                       {copy.pasteContentLabel}
                     </label>
                     <span className="text-xs tabular-nums text-muted-foreground">
-                      {copy.characterCount(pasteContent.length)}
+                      {copy.characterCount(pasteContent.length)} · {formatSize(pasteByteSize, locale)}
                     </span>
                   </div>
                   <Textarea
                     id="paste-content"
                     value={pasteContent}
                     onChange={(event) => setPasteContent(event.target.value)}
+                    onKeyDown={(event) => {
+                      if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && pasteContent.trim()) {
+                        event.preventDefault()
+                        uploadPaste()
+                      }
+                    }}
                     placeholder={copy.pasteContentPlaceholder}
                     className="min-h-64 flex-1 resize-none leading-6"
                   />
                 </div>
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between gap-3">
+                  <Button type="button" variant="ghost" onClick={clearPasteDraft} disabled={!pasteContent && pasteFileName === "paste.txt"}>
+                    <Trash2 aria-hidden="true" />
+                    {copy.clearPaste}
+                  </Button>
                   <Button
                     type="button"
                     size="lg"
@@ -458,6 +576,7 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
                   >
                     <Upload aria-hidden="true" />
                     {copy.uploadPaste}
+                    <span className="hidden text-xs opacity-70 sm:inline">⌘/Ctrl ↵</span>
                   </Button>
                 </div>
               </CardContent>
@@ -497,6 +616,9 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
                     locale={locale}
                     currentFormat={format}
                     onCopy={copyText}
+                    onCancel={cancelItem}
+                    onRemove={removeItem}
+                    onRetry={retryItem}
                   />
                 ))}
               </div>
@@ -521,10 +643,22 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
                 </div>
 
                 <Tabs value={format} onValueChange={(value) => setFormat(value as LinkFormat)}>
-                  <TabsList className="grid w-full grid-cols-4">
+                  <div className="sm:hidden">
+                    <Select value={format} onValueChange={(value) => setFormat(value as LinkFormat)}>
+                      <SelectTrigger className="w-full" aria-label={copy.outputFormat}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FORMATS.map((item) => (
+                          <SelectItem key={item} value={item}>{getFormatLabel(item)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <TabsList className="hidden w-full grid-cols-4 sm:grid">
                     {FORMATS.map((item) => (
                       <TabsTrigger key={item} value={item} className="text-xs sm:text-sm">
-                        {item === "url" ? "URL" : item === "html" ? "HTML" : item === "bbcode" ? "BBCode" : "Markdown"}
+                        {getFormatLabel(item)}
                       </TabsTrigger>
                     ))}
                   </TabsList>
@@ -601,10 +735,13 @@ interface UploadRowProps {
   currentFormat: LinkFormat
   item: UploadItem
   locale: Locale
+  onCancel: (item: UploadItem) => void
   onCopy: (text: string) => Promise<void>
+  onRemove: (item: UploadItem) => void
+  onRetry: (item: UploadItem) => void
 }
 
-function UploadRow({ copy, currentFormat, item, locale, onCopy }: UploadRowProps) {
+function UploadRow({ copy, currentFormat, item, locale, onCancel, onCopy, onRemove, onRetry }: UploadRowProps) {
   const Icon = getFileIcon(item.file.type)
   const statusText =
     item.status === "queued"
@@ -613,6 +750,8 @@ function UploadRow({ copy, currentFormat, item, locale, onCopy }: UploadRowProps
         ? copy.uploading(item.progress)
         : item.status === "success"
           ? copy.uploaded
+          : item.status === "cancelled"
+            ? copy.cancelled
           : `${copy.failed}: ${item.error ?? copy.unknownError}`
 
   return (
@@ -646,27 +785,61 @@ function UploadRow({ copy, currentFormat, item, locale, onCopy }: UploadRowProps
           <Progress value={item.progress} className="mt-2 h-1" aria-label={statusText} />
         ) : null}
       </div>
-      {item.resultUrl ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={copy.copyLink(item.file.name)}
-          title={copy.copyLink(item.file.name)}
-          onClick={() =>
-            onCopy(
-              formatLink(
-                { fileName: item.file.name, url: item.resultUrl! },
-                currentFormat,
-              ),
-            )
-          }
-        >
-          <Copy aria-hidden="true" />
-        </Button>
-      ) : null}
+      <div className="flex shrink-0 items-center gap-0.5">
+        {item.resultUrl ? (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={copy.copyLink(item.file.name)}
+              title={copy.copyLink(item.file.name)}
+              onClick={() =>
+                onCopy(
+                  formatLink(
+                    { fileName: item.file.name, url: item.resultUrl! },
+                    currentFormat,
+                  ),
+                )
+              }
+            >
+              <Copy aria-hidden="true" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon-sm" asChild>
+              <a href={item.resultUrl} target="_blank" rel="noopener noreferrer" aria-label={copy.openFile(item.file.name)} title={copy.openFile(item.file.name)}>
+                <ExternalLink aria-hidden="true" />
+              </a>
+            </Button>
+          </>
+        ) : null}
+        {item.status === "error" || item.status === "cancelled" ? (
+          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onRetry(item)} aria-label={copy.retryFile(item.file.name)} title={copy.retryFile(item.file.name)}>
+            <RotateCcw aria-hidden="true" />
+          </Button>
+        ) : null}
+        {item.status === "queued" || item.status === "uploading" ? (
+          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onCancel(item)} aria-label={copy.cancelFile(item.file.name)} title={copy.cancelFile(item.file.name)}>
+            <X aria-hidden="true" />
+          </Button>
+        ) : (
+          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onRemove(item)} aria-label={copy.removeFile(item.file.name)} title={copy.removeFile(item.file.name)}>
+            <Trash2 aria-hidden="true" />
+          </Button>
+        )}
+      </div>
     </div>
   )
+}
+
+function isPreviewableImage(file: globalThis.File) {
+  return file.type.startsWith("image/") || /\.(avif|bmp|gif|jpe?g|png|webp)$/i.test(file.name)
+}
+
+function getFormatLabel(format: LinkFormat) {
+  if (format === "url") return "URL"
+  if (format === "html") return "HTML"
+  if (format === "bbcode") return "BBCode"
+  return "Markdown"
 }
 
 function getFileIcon(type: string) {

@@ -105,8 +105,15 @@ function makePng(file, rgb) {
   const pasteEditor = page.getByLabel(/Content|正文/);
   const pasteName = page.getByLabel(/File name|文件名/);
   await pasteEditor.fill('E2E paste content');
+  await page.waitForTimeout(350);
   check('Pastebin 提供文件名和正文编辑',
     await pasteEditor.count() === 1 && await pasteName.count() === 1);
+  check('Pastebin 显示字节大小并保存草稿',
+    /\d+(\.\d+)?\s*(B|KB|MB)/.test(await page.textContent('body')) &&
+    Boolean(await page.evaluate(() => localStorage.getItem('telegraph-image:paste-draft'))));
+  check('Pastebin 提供清空草稿和快捷上传提示',
+    await page.getByRole('button', { name: /Clear draft|清空草稿/ }).count() === 1 &&
+    /Ctrl/.test(await page.getByRole('button', { name: /Upload text|上传文本/ }).textContent()));
   check('输入正文后可上传文本',
     await page.getByRole('button', { name: /Upload text|上传文本/ }).isEnabled());
   await page.getByRole('tab', { name: /Files|文件/ }).click();
@@ -119,6 +126,27 @@ function makePng(file, rgb) {
   const isMultiple = inputCount ? await fileInput.evaluate(el => el.hasAttribute('multiple')) : false;
   check('存在文件选择输入', inputCount > 0);
   check('支持多文件选择 (multiple)', isMultiple);
+
+  // Bot mode rejects doomed uploads before any request is sent.
+  if (/Original image|原画质图片/.test(bodyText)) {
+    let oversizedRequests = 0;
+    const countOversizedRequest = request => {
+      if (request.method() === 'POST' && /\/upload$/.test(request.url())) oversizedRequests += 1;
+    };
+    page.on('request', countOversizedRequest);
+    await fileInput.setInputFiles({
+      name: 'too-large.bin',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.alloc(20 * 1024 * 1024 + 1),
+    });
+    await page.waitForTimeout(500);
+    page.off('request', countOversizedRequest);
+    check('Bot 模式在请求前拦截超限文件', oversizedRequests === 0 && /20 MB/.test(await page.textContent('body')));
+    check('超限文件提供重试和移除操作',
+      await page.getByRole('button', { name: /Retry too-large.bin|重试 too-large.bin/ }).count() === 1 &&
+      await page.getByRole('button', { name: /Remove too-large.bin|移除 too-large.bin/ }).count() === 1);
+    await page.getByRole('button', { name: /Remove too-large.bin|移除 too-large.bin/ }).click();
+  }
 
   // --- 3. batch upload of two files
   const f1 = makePng(path.join(OUT, 'e2e-a.png'), [255, 0, 0]);
@@ -258,6 +286,23 @@ function makePng(file, rgb) {
   const adminRendered = /管理后台|Admin dashboard/.test(adminText) && adminRows > 0;
   check('shadcn 后台页面加载并显示记录', adminRendered,
     `HTTP ${adminResp && adminResp.status()}, 元素 ${adminRows} 个, JS错误: ${adminErrors.slice(0,2).join('|') || 'none'}`);
+  if (adminRendered) {
+    const statButtons = admin.locator('section[aria-label]').getByRole('button');
+    if (await statButtons.count() > 1) {
+      await statButtons.nth(1).click();
+      check('后台统计卡片可筛选并同步 URL', /type=image/.test(admin.url()));
+    }
+    const previewButton = admin.getByRole('button', { name: /Preview:|预览:/ }).first();
+    if (await previewButton.count()) {
+      await previewButton.click();
+      check('后台缩略图打开站内预览', await admin.getByRole('dialog').count() === 1);
+      await admin.keyboard.press('Escape');
+    }
+    check('后台表头提供直接排序',
+      await admin.getByRole('button', { name: /File name|文件名/ }).count() >= 1 &&
+      await admin.getByRole('button', { name: /Size|大小/ }).count() >= 1 &&
+      await admin.getByRole('button', { name: /Uploaded|上传时间/ }).count() >= 1);
+  }
   await admin.screenshot({ path: path.join(OUT, 'shot-5-admin.png'), fullPage: true });
 
   // --- 9. no console errors

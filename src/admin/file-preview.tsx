@@ -6,10 +6,11 @@ import { cn } from "@/lib/utils"
 
 interface FilePreviewProps {
   className?: string
+  detailed?: boolean
   file: ManagedFile
 }
 
-export function FilePreview({ className, file }: FilePreviewProps) {
+export function FilePreview({ className, detailed = false, file }: FilePreviewProps) {
   const kind = getFileKind(file.name)
   const source = getFileHref(file)
   const commonClass = cn("size-full object-cover", className)
@@ -18,7 +19,7 @@ export function FilePreview({ className, file }: FilePreviewProps) {
     return (
       <img
         src={source}
-        alt=""
+        alt={detailed ? file.metadata.fileName : ""}
         className={commonClass}
         loading="lazy"
         decoding="async"
@@ -28,9 +29,17 @@ export function FilePreview({ className, file }: FilePreviewProps) {
 
   if (kind === "video") {
     return (
-      <video className={commonClass} preload="metadata" muted playsInline>
+      <video className={commonClass} preload="metadata" muted={!detailed} playsInline controls={detailed}>
         <source src={source} />
       </video>
+    )
+  }
+
+  if (kind === "audio" && detailed) {
+    return (
+      <div className={cn("flex size-full items-center justify-center bg-muted px-6", className)}>
+        <audio className="w-full" src={source} controls preload="metadata" />
+      </div>
     )
   }
 

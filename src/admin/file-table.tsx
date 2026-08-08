@@ -1,9 +1,13 @@
+import type { ReactNode } from "react"
+import { ArrowUpDown } from "lucide-react"
+
 import type { AdminCopy } from "@/admin/copy"
 import { FileActions, type FileActionProps } from "@/admin/file-actions"
 import { FilePreview } from "@/admin/file-preview"
 import { FileStatus } from "@/admin/file-status"
-import { formatFileSize, formatTimestamp, getExtension, getFileHref, getFileKind } from "@/admin/file-utils"
-import type { ManagedFile } from "@/admin/types"
+import { formatFileSize, formatTimestamp, getExtension, getFileKind } from "@/admin/file-utils"
+import type { FileSort, ManagedFile } from "@/admin/types"
+import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
@@ -18,7 +22,10 @@ interface FileTableProps extends Omit<FileActionProps, "file"> {
   files: ManagedFile[]
   locale: string
   onSelect: (file: ManagedFile, selected: boolean) => void
+  onPreview: (file: ManagedFile) => void
+  onSort: (sort: FileSort) => void
   selected: Set<string>
+  sort: FileSort
 }
 
 export function FileTable({
@@ -27,10 +34,13 @@ export function FileTable({
   locale,
   onConfirm,
   onCopy,
+  onPreview,
   onRename,
   onSelect,
+  onSort,
   onToggleFavorite,
   selected,
+  sort,
 }: FileTableProps) {
   return (
     <div className="hidden overflow-x-auto md:block">
@@ -39,11 +49,11 @@ export function FileTable({
           <TableRow>
             <TableHead className="w-12"><span className="sr-only">{copy.selectAll}</span></TableHead>
             <TableHead className="w-20">{copy.preview}</TableHead>
-            <TableHead className="min-w-56">{copy.fileName}</TableHead>
+            <TableHead className="min-w-56"><SortButton active={sort === "name"} onClick={() => onSort("name")}>{copy.fileName}</SortButton></TableHead>
             <TableHead>{copy.kind}</TableHead>
-            <TableHead>{copy.size}</TableHead>
+            <TableHead><SortButton active={sort === "size"} onClick={() => onSort("size")}>{copy.size}</SortButton></TableHead>
             <TableHead>{copy.status}</TableHead>
-            <TableHead className="min-w-40">{copy.uploadedAt}</TableHead>
+            <TableHead className="min-w-40"><SortButton active={sort === "newest"} onClick={() => onSort("newest")}>{copy.uploadedAt}</SortButton></TableHead>
             <TableHead className="w-14"><span className="sr-only">{copy.actions}</span></TableHead>
           </TableRow>
         </TableHeader>
@@ -61,15 +71,14 @@ export function FileTable({
                   />
                 </TableCell>
                 <TableCell>
-                  <a
-                    href={getFileHref(file)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => onPreview(file)}
                     className="block size-12 overflow-hidden rounded-md border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label={`${copy.open}: ${file.metadata.fileName}`}
+                    aria-label={`${copy.preview}: ${file.metadata.fileName}`}
                   >
                     <FilePreview file={file} />
-                  </a>
+                  </button>
                 </TableCell>
                 <TableCell>
                   <div className="max-w-72">
@@ -97,5 +106,21 @@ export function FileTable({
         </TableBody>
       </Table>
     </div>
+  )
+}
+
+function SortButton({ active, children, onClick }: { active: boolean; children: ReactNode; onClick: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="-ml-3 h-8"
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      {children}
+      <ArrowUpDown aria-hidden="true" className={active ? "text-foreground" : "text-muted-foreground"} />
+    </Button>
   )
 }

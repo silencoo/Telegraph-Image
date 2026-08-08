@@ -2,7 +2,7 @@ import type { AdminCopy } from "@/admin/copy"
 import { FileActions, type FileActionProps } from "@/admin/file-actions"
 import { FilePreview } from "@/admin/file-preview"
 import { FileStatus } from "@/admin/file-status"
-import { formatFileSize, formatTimestamp, getFileHref, getFileKind } from "@/admin/file-utils"
+import { formatFileSize, formatTimestamp, getFileKind } from "@/admin/file-utils"
 import type { ManagedFile } from "@/admin/types"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
@@ -12,6 +12,7 @@ interface FileGridProps extends Omit<FileActionProps, "file"> {
   forceVisible?: boolean
   locale: string
   onSelect: (file: ManagedFile, selected: boolean) => void
+  onPreview: (file: ManagedFile) => void
   selected: Set<string>
 }
 
@@ -22,6 +23,7 @@ export function FileGrid({
   locale,
   onConfirm,
   onCopy,
+  onPreview,
   onRename,
   onSelect,
   onToggleFavorite,
@@ -44,15 +46,14 @@ export function FileGrid({
             )}
           >
             <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-              <a
-                href={getFileHref(file)}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => onPreview(file)}
                 className="block size-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                aria-label={`${copy.open}: ${file.metadata.fileName}`}
+                aria-label={`${copy.preview}: ${file.metadata.fileName}`}
               >
                 <FilePreview file={file} className="transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transition-none" />
-              </a>
+              </button>
               <div className="absolute left-3 top-3 rounded-md bg-background/90 p-2 shadow-sm backdrop-blur-sm">
                 <Checkbox
                   checked={checked}

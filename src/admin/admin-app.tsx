@@ -12,6 +12,7 @@ import {
   Languages,
   List,
   LogOut,
+  Maximize2,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -23,8 +24,9 @@ import { toast } from "sonner"
 import { AdminLogin } from "@/admin/admin-login"
 import { adminMessages } from "@/admin/copy"
 import { FileGrid } from "@/admin/file-grid"
+import { FilePreview } from "@/admin/file-preview"
 import { FileTable } from "@/admin/file-table"
-import { getFileKind, getPublicUrl, normalizeFile } from "@/admin/file-utils"
+import { formatFileSize, getFileHref, getFileKind, getPublicUrl, normalizeFile } from "@/admin/file-utils"
 import type {
   ConfirmOperation,
   FileFilter,
@@ -51,6 +53,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -63,6 +73,17 @@ import { useLocale } from "@/hooks/use-locale"
 
 const MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 const MAX_UPLOAD_CONCURRENT = 3
+
+function readAdminParam<T extends string>(name: string, allowed: readonly T[], fallback: T) {
+  if (typeof window === "undefined") return fallback
+  const value = new URLSearchParams(window.location.search).get(name)
+  return allowed.includes(value as T) ? value as T : fallback
+}
+
+function readAdminSearch() {
+  if (typeof window === "undefined") return ""
+  return new URLSearchParams(window.location.search).get("q") ?? ""
+}
 
 export function AdminApp() {
   const { locale, toggleLocale } = useLocale()
@@ -87,11 +108,11 @@ export function AdminApp() {
     usesBasicAuth,
   } = useManagedFiles()
 
-  const [search, setSearch] = useState("")
-  const [kindFilter, setKindFilter] = useState<FileKind | "all">("all")
-  const [statusFilter, setStatusFilter] = useState<FileFilter>("all")
-  const [sort, setSort] = useState<FileSort>("newest")
-  const [view, setView] = useState<FileView>("table")
+  const [search, setSearch] = useState(readAdminSearch)
+  const [kindFilter, setKindFilter] = useState<FileKind | "all">(() => readAdminParam("type", ["all", "image", "video", "audio", "document"] as const, "all"))
+  const [statusFilter, setStatusFilter] = useState<FileFilter>(() => readAdminParam("status", ["all", "favorites", "white", "block", "adult"] as const, "all"))
+  const [sort, setSort] = useState<FileSort>(() => readAdminParam("sort", ["newest", "name", "size"] as const, "newest"))
+  const [view, setView] = useState<FileView>(() => readAdminParam("view", ["table", "grid"] as const, "table"))
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmOperation, setConfirmOperation] = useState<ConfirmOperation | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -99,10 +120,22 @@ export function AdminApp() {
   const [renameValue, setRenameValue] = useState("")
   const [renameError, setRenameError] = useState("")
   const [uploading, setUploading] = useState(false)
+  const [previewFile, setPreviewFile] = useState<ManagedFile | null>(null)
 
   useEffect(() => {
     document.title = `${authRequired ? copy.loginTitle : copy.metaTitle} | Telegraph-Image`
   }, [authRequired, copy.loginTitle, copy.metaTitle])
+
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (search.trim()) params.set("q", search.trim())
+    if (kindFilter !== "all") params.set("type", kindFilter)
+    if (statusFilter !== "all") params.set("status", statusFilter)
+    if (sort !== "newest") params.set("sort", sort)
+    if (view !== "table") params.set("view", view)
+    const query = params.toString()
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`)
+  }, [kindFilter, search, sort, statusFilter, view])
 
   const counts = useMemo(() => {
     const result: Record<FileKind, number> = { image: 0, video: 0, audio: 0, document: 0 }
@@ -322,12 +355,12 @@ export function AdminApp() {
     onToggleFavorite: (file: ManagedFile) => void handleFavorite(file),
   }
 
-  const statCards = [
-    { label: copy.loaded, value: files.length, icon: List },
-    { label: copy.image, value: counts.image, icon: ImageIcon },
-    { label: copy.video, value: counts.video, icon: FileVideo },
-    { label: copy.audio, value: counts.audio, icon: FileAudio },
-    { label: copy.document, value: counts.document, icon: FileText },
+  const statCards: Array<{ filter: FileKind | "all"; icon: typeof List; label: string; value: number }> = [
+    { filter: "all", label: copy.loaded, value: files.length, icon: List },
+    { filter: "image", label: copy.image, value: counts.image, icon: ImageIcon },
+    { filter: "video", label: copy.video, value: counts.video, icon: FileVideo },
+    { filter: "audio", label: copy.audio, value: counts.audio, icon: FileAudio },
+    { filter: "document", label: copy.document, value: counts.document, icon: FileText },
   ]
 
   return (
@@ -369,7 +402,7 @@ export function AdminApp() {
         </div>
       </header>
 
-      <main id="admin-content" className="mx-auto w-full max-w-[1440px] space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <main id="admin-content" className={`mx-auto w-full max-w-[1440px] space-y-6 px-4 pt-6 sm:px-6 sm:py-8 lg:px-8 ${selectedFiles.length ? "pb-24" : "pb-6"}`}>
         <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end" aria-labelledby="admin-title">
           <div>
             <p className="text-sm font-medium text-primary">Telegraph-Image</p>
@@ -390,18 +423,26 @@ export function AdminApp() {
         </section>
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label={copy.loaded}>
-          {statCards.map(({ label, value, icon: Icon }) => (
-            <Card key={label} className="gap-3 py-4 shadow-none">
-              <CardContent className="flex items-center justify-between px-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-                </div>
-                <span className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                  <Icon className="size-4" aria-hidden="true" />
-                </span>
-              </CardContent>
-            </Card>
+          {statCards.map(({ filter, label, value, icon: Icon }) => (
+            <button
+              key={filter}
+              type="button"
+              aria-pressed={kindFilter === filter}
+              onClick={() => setKindFilter(filter)}
+              className="rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <Card className={kindFilter === filter ? "gap-3 border-primary py-4 shadow-none ring-2 ring-primary/10" : "gap-3 py-4 shadow-none transition-colors hover:border-primary/40"}>
+                <CardContent className="flex items-center justify-between px-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+                  </div>
+                  <span className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <Icon className="size-4" aria-hidden="true" />
+                  </span>
+                </CardContent>
+              </Card>
+            </button>
           ))}
         </section>
 
@@ -439,7 +480,7 @@ export function AdminApp() {
                   </SelectContent>
                 </Select>
                 <Select value={sort} onValueChange={(value) => setSort(value as FileSort)}>
-                  <SelectTrigger aria-label={copy.sortLabel} className="w-full sm:w-36"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={copy.sortLabel} className={`w-full sm:w-36 ${view === "table" ? "md:hidden" : ""}`}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="newest">{copy.newest}</SelectItem>
                     <SelectItem value="name">{copy.nameAscending}</SelectItem>
@@ -466,7 +507,7 @@ export function AdminApp() {
                 {selectedFiles.length ? <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(new Set())}>{copy.clearSelection}</Button> : null}
               </div>
               {selectedFiles.length ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="hidden flex-wrap gap-2 md:flex">
                   <Button type="button" variant="outline" size="sm" onClick={() => void copyText(selectedFiles.map(getPublicUrl).join("\n"))}><Copy aria-hidden="true" />{copy.batchCopy}</Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => requestConfirmation({ files: selectedFiles, type: "white" })}><ShieldCheck aria-hidden="true" />{copy.batchWhite}</Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => requestConfirmation({ files: selectedFiles, type: "block" })}><Ban aria-hidden="true" />{copy.batchBlock}</Button>
@@ -497,9 +538,18 @@ export function AdminApp() {
             ) : (
               <div className={view === "grid" ? "p-4 sm:p-5" : ""}>
                 {view === "table" ? (
-                  <FileTable files={filteredFiles} locale={locale} selected={selected} onSelect={selectFile} {...actionProps} />
+                  <FileTable
+                    files={filteredFiles}
+                    locale={locale}
+                    selected={selected}
+                    sort={sort}
+                    onPreview={setPreviewFile}
+                    onSelect={selectFile}
+                    onSort={setSort}
+                    {...actionProps}
+                  />
                 ) : null}
-                <FileGrid files={filteredFiles} forceVisible={view === "grid"} locale={locale} selected={selected} onSelect={selectFile} {...actionProps} />
+                <FileGrid files={filteredFiles} forceVisible={view === "grid"} locale={locale} selected={selected} onPreview={setPreviewFile} onSelect={selectFile} {...actionProps} />
               </div>
             )}
           </CardContent>
@@ -516,6 +566,48 @@ export function AdminApp() {
           ) : null}
         </Card>
       </main>
+
+      {selectedFiles.length ? (
+        <div className="fixed inset-x-4 bottom-4 z-40 flex items-center justify-between gap-2 rounded-xl border bg-background/95 p-2 shadow-lg backdrop-blur-sm md:hidden">
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+            {copy.selected(selectedFiles.length)}
+          </Button>
+          <div className="flex items-center gap-1">
+            <Button type="button" variant="ghost" size="icon-sm" title={copy.batchCopy} aria-label={copy.batchCopy} onClick={() => void copyText(selectedFiles.map(getPublicUrl).join("\n"))}><Copy aria-hidden="true" /></Button>
+            <Button type="button" variant="ghost" size="icon-sm" title={copy.batchWhite} aria-label={copy.batchWhite} onClick={() => requestConfirmation({ files: selectedFiles, type: "white" })}><ShieldCheck aria-hidden="true" /></Button>
+            <Button type="button" variant="ghost" size="icon-sm" title={copy.batchBlock} aria-label={copy.batchBlock} onClick={() => requestConfirmation({ files: selectedFiles, type: "block" })}><Ban aria-hidden="true" /></Button>
+            <Button type="button" variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" title={copy.batchDelete} aria-label={copy.batchDelete} onClick={() => requestConfirmation({ files: selectedFiles, type: "delete" })}><Trash2 aria-hidden="true" /></Button>
+          </div>
+        </div>
+      ) : null}
+
+      <Dialog open={Boolean(previewFile)} onOpenChange={(open) => !open && setPreviewFile(null)}>
+        <DialogContent className="max-w-4xl" closeLabel={copy.cancel}>
+          {previewFile ? (
+            <>
+              <DialogHeader className="pr-8">
+                <DialogTitle className="truncate" title={previewFile.metadata.fileName}>{previewFile.metadata.fileName}</DialogTitle>
+                <DialogDescription>
+                  {copy[getFileKind(previewFile.name)]} · {formatFileSize(previewFile.metadata.fileSize, locale)}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex min-h-64 max-h-[65dvh] items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
+                <FilePreview file={previewFile} detailed className="max-h-[65dvh] object-contain" />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => void copyText(getPublicUrl(previewFile))}>
+                  <Copy aria-hidden="true" />{copy.copyLink}
+                </Button>
+                <Button type="button" asChild>
+                  <a href={getFileHref(previewFile)} target="_blank" rel="noopener noreferrer">
+                    <Maximize2 aria-hidden="true" />{copy.open}
+                  </a>
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={Boolean(confirmOperation)} onOpenChange={(open) => !open && !processing && setConfirmOperation(null)}>
         <AlertDialogContent>
