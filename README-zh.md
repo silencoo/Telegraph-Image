@@ -73,9 +73,9 @@ npm run setup -- --project images --yes
 
 ## 文档
 
-- [部署与更新](docs/deployment.md)
-- [配置参考](docs/configuration.md)
-- [上传 API](docs/api.md)
+- [部署与更新](docs/zh/deployment.md)
+- [配置参考](docs/zh/configuration.md)
+- [上传 API](docs/zh/api.md)
 
 仓库已包含 `.gitbook.yaml` 和 `SUMMARY.md`，可以直接连接 GitBook Git Sync。
 
