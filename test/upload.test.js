@@ -194,6 +194,7 @@ describe('upload function', function () {
     }));
 
     assert.strictEqual(res.status, 401);
+    assert.strictEqual(res.headers.get('WWW-Authenticate'), 'Basic realm="my scope", charset="UTF-8"');
     assert.strictEqual(await res.text(), 'Invalid upload credentials.');
   });
 

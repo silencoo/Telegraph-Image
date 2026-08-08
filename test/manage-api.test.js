@@ -191,7 +191,8 @@ describe('manage API authentication middleware', function () {
     }));
 
     assert.strictEqual(res.status, 401);
-    assert.strictEqual(res.headers.get('WWW-Authenticate'), 'Basic realm="my scope", charset="UTF-8"');
+    assert.strictEqual(await res.text(), 'Authentication required.');
+    assert.strictEqual(res.headers.get('WWW-Authenticate'), null);
   });
 
   it('allows dashboard requests with valid basic auth credentials', async function () {
@@ -209,6 +210,117 @@ describe('manage API authentication middleware', function () {
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(await res.text(), 'ok');
+
+  });
+
+  it('rejects invalid dashboard credentials without opening a browser auth prompt', async function () {
+    const authentication = await getAuthentication();
+    const img_url = createMockKV();
+    const headers = new Headers({
+      Authorization: `Basic ${btoa('admin:wrong')}`,
+    });
+
+    const res = await authentication(makeContext({
+      env: { img_url, BASIC_USER: 'admin', BASIC_PASS: 'secret' },
+      request: new Request('https://example.com/api/manage/list', { headers }),
+    }));
+
+    assert.strictEqual(res.status, 401);
+    assert.strictEqual(await res.text(), 'Invalid credentials.');
+    assert.strictEqual(res.headers.get('WWW-Authenticate'), null);
+  });
+
+  it('lets the custom login endpoint run without existing authentication', async function () {
+    const authentication = await getAuthentication();
+    const img_url = createMockKV();
+
+    const res = await authentication(makeContext({
+      env: { img_url, BASIC_USER: 'admin', BASIC_PASS: 'secret' },
+      request: new Request('https://example.com/api/manage/login', { method: 'POST' }),
+      next: async () => new Response('login endpoint'),
+    }));
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(await res.text(), 'login endpoint');
+  });
+
+  it('accepts a signed session cookie created by the custom login endpoint', async function () {
+    const { onRequestPost } = await import('../functions/api/manage/login.js');
+    const authentication = await getAuthentication();
+    const img_url = createMockKV();
+    const env = { img_url, BASIC_USER: 'admin', BASIC_PASS: 'secret' };
+    const loginResponse = await onRequestPost(makeContext({
+      env,
+      request: new Request('https://example.com/api/manage/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'https://example.com' },
+        body: JSON.stringify({ user: 'admin', pass: 'secret' }),
+      }),
+    }));
+
+    assert.strictEqual(loginResponse.status, 200);
+    assert.deepStrictEqual(JSON.parse(await loginResponse.text()), { success: true });
+    const setCookie = loginResponse.headers.get('Set-Cookie');
+    assert.ok(setCookie.includes('telegraph_admin_session='));
+    assert.ok(setCookie.includes('HttpOnly'));
+    assert.ok(setCookie.includes('SameSite=Strict'));
+    assert.ok(setCookie.includes('Secure'));
+
+    const cookie = setCookie.split(';')[0];
+    const res = await authentication(makeContext({
+      env,
+      request: new Request('https://example.com/api/manage/list', {
+        headers: { Cookie: cookie },
+      }),
+      next: async () => new Response('ok'),
+    }));
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(await res.text(), 'ok');
+
+    const [cookieName, token] = cookie.split('=');
+    const mutationIndex = Math.floor(token.length / 2);
+    const mutatedToken = `${token.slice(0, mutationIndex)}${token[mutationIndex] === 'A' ? 'B' : 'A'}${token.slice(mutationIndex + 1)}`;
+    const rejected = await authentication(makeContext({
+      env,
+      request: new Request('https://example.com/api/manage/list', {
+        headers: { Cookie: `${cookieName}=${mutatedToken}` },
+      }),
+    }));
+
+    assert.strictEqual(rejected.status, 401);
+    assert.strictEqual(rejected.headers.get('WWW-Authenticate'), null);
+  });
+
+  it('rejects invalid custom login credentials without setting a cookie', async function () {
+    const { onRequestPost } = await import('../functions/api/manage/login.js');
+    const res = await onRequestPost(makeContext({
+      env: { BASIC_USER: 'admin', BASIC_PASS: 'secret' },
+      request: new Request('https://example.com/api/manage/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: 'admin', pass: 'wrong' }),
+      }),
+    }));
+
+    assert.strictEqual(res.status, 401);
+    assert.strictEqual(await res.text(), 'Invalid credentials.');
+    assert.strictEqual(res.headers.get('WWW-Authenticate'), null);
+    assert.strictEqual(res.headers.get('Set-Cookie'), null);
+  });
+
+  it('clears the dashboard session cookie on logout', async function () {
+    const { onRequestPost } = await import('../functions/api/manage/logout.js');
+    const res = await onRequestPost(makeContext({
+      request: new Request('https://example.com/api/manage/logout', { method: 'POST' }),
+    }));
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(JSON.parse(await res.text()), { success: true });
+    const setCookie = res.headers.get('Set-Cookie');
+    assert.ok(setCookie.includes('telegraph_admin_session='));
+    assert.ok(setCookie.includes('Max-Age=0'));
+    assert.ok(setCookie.includes('HttpOnly'));
   });
 
   it('returns the dashboard disabled message when KV is not bound', async function () {

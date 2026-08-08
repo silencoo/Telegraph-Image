@@ -28,13 +28,20 @@ English|[中文](README-zh.md)
 
 1. Fork this repository (Note: You must deploy using Git or the Wrangler CLI tool for it to work properly, [Documentation](https://developers.cloudflare.com/pages/functions/get-started/#deploy-your-function))
 
-2. Open the Cloudflare Dashboard, enter the Pages management page, select Create Project, choose `Connect to Git provider`, follow the prompts to enter the project name, select the repository you just forked, then click `Deploy site`
+2. Open the Cloudflare Dashboard, create a Pages project, and connect the repository you just forked. Set the build command to `npm run build` and the build output directory to `dist`, then select `Deploy site`
 
 ![1](https://telegraph-image.pages.dev/file/8d4ef9b7761a25821d9c2.png)
 
 3. After deployment, go to the project's `Settings` -> `Environment Variables`, add `TG_Bot_Token` and `TG_Chat_ID` (see [the next section](#how-to-obtain-telegram-bot_token-and-chat_id) for how to obtain them), save, then go to the `Deployments` page and **redeploy once**
 
 Done! Open your `*.pages.dev` domain and start uploading. For the dashboard, upload protection, short links, and more, see the [Optional Features Guide](#optional-features-guide).
+
+For Wrangler Direct Upload, run this from the repository root:
+
+```bash
+npm install
+npm run deploy
+```
 
 ## How to Obtain Telegram `Bot_Token` and `Chat_ID`
 
@@ -121,7 +128,7 @@ Bindings (`Settings` -> `Functions`):
 
 9. Batch upload with drag & drop and paste support, per-file progress, and one-click copy as URL / Markdown / BBCode / HTML; optional anti-hotlinking via a referer allowlist
 
-10. Deployment self-check: when configuration is incomplete the homepage says which environment variable or binding is missing and where to set it, instead of failing on the first upload
+10. The homepage supports Chinese and English, follows the browser language by default, and can be switched at any time from the header
 
 ## Optional Features Guide
 
@@ -148,6 +155,8 @@ Disabled by default. To enable, add the following environment variables:
 ![](https://im.gurl.eu.org/file/dff376498ac87cdb78071.png)
 
 Of course, you can also choose not to set these two values, so that accessing the backend management page will not require verification and will skip the login step directly. This design allows you to use it in combination with Cloudflare Access to achieve email verification code login, Microsoft account login, Github account login, and other functions. It can be integrated with the existing login method on your domain without having to remember another set of backend credentials. For adding Cloudflare Access, please refer to the official documentation. Note that the protected path needs to include /admin and /api/manage/\*
+
+When both variables are set, `/admin` uses the built-in bilingual login form and keeps the authenticated session in a signed, HttpOnly cookie for 8 hours. Basic Auth headers remain accepted for direct management API clients.
 
 ### Upload Protection
 
@@ -261,7 +270,7 @@ You can also enable automatic syncing: after forking, go to your repository's Ac
 
 **Deployment fails with "Missing entry-point to Worker script or to assets directory"**
 
-This happens when the project is deployed as a Worker instead of a Pages project (e.g. `wrangler deploy`, or picking "Workers" when connecting the repository). This repository has no Worker entry point — it is a **Pages** project using file-based Functions. Deploy it via `Workers & Pages` -> `Create` -> **`Pages`** -> `Connect to Git`, leave the build command empty, and set the build output directory to `/`. From the CLI, the equivalent is `wrangler pages deploy .`, not `wrangler deploy`.
+This happens when the project is deployed as a Worker instead of a Pages project (e.g. `wrangler deploy`, or picking "Workers" when connecting the repository). This repository has no Worker entry point — it is a **Pages** project using file-based Functions. Deploy it via `Workers & Pages` -> `Create` -> **`Pages`** -> `Connect to Git`, set the build command to `npm run build`, and set the build output directory to `dist`. From the CLI, run `npm run deploy` (which calls `wrangler pages deploy dist`), not `wrangler deploy`.
 
 **Images stopped loading / uploads fail after a while**
 
@@ -275,7 +284,8 @@ No — go to `Deployments` and redeploy once after any change to environment var
 
 ```bash
 npm install
-npm start      # start a local dev server (wrangler pages dev on port 8080; dashboard credentials default to admin/123)
+npm run build  # build the Vite + React frontend into dist
+npm start      # build and start Pages locally on port 8080; dashboard credentials default to admin/123
 npm test       # run the unit tests (mocha) — this is what CI runs
 ```
 
@@ -292,15 +302,23 @@ npm run start:r2   # terminal 1
 npm run test:e2e   # terminal 2
 ```
 
-The end-to-end suite covers batch upload, drag-and-drop, file retrieval and Content-Type, all four output formats, the setup self-check notice, and the dashboard; screenshots land in `test/e2e/output/`. Env vars: `E2E_BASE_URL` (default http://localhost:8080) and `E2E_CHROMIUM` (path to a Chromium binary, for environments where Playwright cannot download its own).
-
-> The dashboard (/admin) loads Vue and Element UI from cdn.jsdelivr.net, so it renders blank where that CDN is unreachable — the end-to-end suite detects this and skips the dashboard check instead of failing.
+The end-to-end suite covers batch upload, drag-and-drop, file retrieval and Content-Type, all four output formats, locale switching, and the shadcn dashboard; screenshots land in `test/e2e/output/`. Env vars: `E2E_BASE_URL` (default http://localhost:8080) and `E2E_CHROMIUM` (path to a Chromium binary, for environments where Playwright cannot download its own).
 
 ### Thanks
 
 Ideas and code provided by Hostloc @feixiang and @乌拉擦
 
 ## Update Log
+August 8, 2026 - shadcn/ui Homepage, Dashboard, and Locales
+
+- Migrated the homepage to Vite, React, TypeScript, Tailwind CSS, and real shadcn/ui components while preserving batch, drag-and-drop, paste uploads, and all four link formats
+- Removed the random Bing wallpaper and deployment-configuration notices from the homepage; `GET /api/config` still exposes non-sensitive status for APIs and custom frontends
+- Added Chinese and English locales with browser-language detection and persisted manual switching
+- Migrated the dashboard to React and shadcn/ui with table/grid views, search, filters, sorting, batch upload and management, rename controls, and complete async states
+- Removed the legacy Vue 2, Element UI, jQuery, and external-CDN dashboard pages; blocked and whitelist status pages now use the same UI system
+- Removed `/index-nuxt.html`, `/index-md.html`, and the `_nuxt` build artifacts; there is no longer a legacy homepage entry
+- Pages now builds to `dist`; Wrangler Direct Upload uses `npm run deploy`
+
 July 19, 2026 - Pluggable Storage & Review, New Homepage, Anti-Hotlinking
 
 - **Image review is now pluggable**, with a new built-in provider based on Cloudflare Workers AI (bind `AI`, no external account needed) — moderatecontent.com has stopped accepting registrations and its provider is kept for legacy keys only; review verdicts are now cached per file, so each file is reviewed at most once (#203/#196/#174/#166/#85/#49)

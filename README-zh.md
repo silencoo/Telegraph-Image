@@ -28,13 +28,20 @@
 
 1. Fork 本仓库（注意：必须使用 Git 或者 Wrangler 命令行工具部署后才能正常使用，[文档](https://developers.cloudflare.com/pages/functions/get-started/#deploy-your-function)）
 
-2. 打开 Cloudflare Dashboard，进入 Pages 管理页面，选择创建项目，选择`连接到 Git 提供程序`，按照页面提示输入项目名称、选择刚 fork 的仓库，点击`部署站点`
+2. 打开 Cloudflare Dashboard，进入 Pages 管理页面，选择创建项目并连接刚 fork 的仓库。构建命令填写 `npm run build`，构建输出目录填写 `dist`，然后点击`部署站点`
 
 ![1](https://telegraph-image.pages.dev/file/8d4ef9b7761a25821d9c2.png)
 
 3. 部署完成后，进入项目的`设置`->`环境变量`，添加 `TG_Bot_Token` 和 `TG_Chat_ID`（获取方法见[下一节](#如何获取telegram的bot_token和chat_id)），保存后进入`部署`页面**重新部署一次**
 
 完成！打开你的 `*.pages.dev` 域名即可上传图片。后台管理、上传保护、短链接等能力见[可选功能开启指南](#可选功能开启指南)。
+
+如使用 Wrangler Direct Upload，在仓库根目录运行：
+
+```bash
+npm install
+npm run deploy
+```
 
 ## 如何获取Telegram的`Bot_Token`和`Chat_ID`
 
@@ -121,7 +128,7 @@
 
 9.批量上传，支持拖拽和粘贴上传、逐文件进度显示，以及 URL / Markdown / BBCode / HTML 四种格式一键复制；可选的 Referer 白名单防盗链
 
-10.部署自检：配置缺失时首页会直接指出缺哪个环境变量或绑定、去哪里补，而不是等到第一次上传才失败
+10.首页支持中文和英文界面，默认跟随浏览器语言，也可从右上角随时切换
 
 ## 可选功能开启指南
 
@@ -148,6 +155,8 @@
 ![](https://im.gurl.eu.org/file/dff376498ac87cdb78071.png)
 
 当然你也可以不设置这两个值，这样访问后台管理页面时将无需验证，直接跳过登录步骤，这一设计使得你可以结合 Cloudflare Access 进行使用，实现支持邮件验证码登录，Microsoft 账户登录，Github 账户登录等功能，能够与你域名上原有的登录方式所集成，无需再次记忆多一组后台的账号密码，添加 Cloudflare Access 的方式请参考官方文档，注意需要保护路径包括/admin 以及 /api/manage/\*
+
+同时设置这两个变量后，访问 `/admin` 会显示项目内置的中英文登录界面，登录状态通过签名的 HttpOnly Cookie 保存 8 小时；直接调用管理 API 时仍兼容 Basic Auth 请求头。
 
 ### 上传保护
 
@@ -261,7 +270,7 @@ curl -u uploader:strong-password -F "file=@/path/to/image.png" https://your.doma
 
 **部署报错 "Missing entry-point to Worker script or to assets directory"**
 
-这是因为项目被当作 Worker 部署了（例如执行了 `wrangler deploy`，或在连接仓库时选择了"Workers"）。本仓库没有 Worker 入口文件，它是一个使用文件路由 Functions 的 **Pages** 项目。请通过 `Workers 和 Pages`->`创建`-> **`Pages`** ->`连接到 Git` 部署，构建命令留空，构建输出目录填 `/`。如使用命令行，对应命令是 `wrangler pages deploy .`，而不是 `wrangler deploy`。
+这是因为项目被当作 Worker 部署了（例如执行了 `wrangler deploy`，或在连接仓库时选择了"Workers"）。本仓库没有 Worker 入口文件，它是一个使用文件路由 Functions 的 **Pages** 项目。请通过 `Workers 和 Pages`->`创建`-> **`Pages`** ->`连接到 Git` 部署，构建命令填写 `npm run build`，构建输出目录填 `dist`。如使用命令行，运行 `npm run deploy`（内部执行 `wrangler pages deploy dist`），而不是 `wrangler deploy`。
 
 **图片突然无法加载 / 上传开始失败**
 
@@ -275,7 +284,8 @@ curl -u uploader:strong-password -F "file=@/path/to/image.png" https://your.doma
 
 ```bash
 npm install
-npm start      # 启动本地开发服务（wrangler pages dev，端口 8080，后台账号密码默认为 admin/123）
+npm run build  # 构建 Vite + React 前端到 dist
+npm start      # 构建并启动 Pages 本地服务（端口 8080，后台账号密码默认为 admin/123）
 npm test       # 运行单元测试（mocha），CI 跑的也是这个
 ```
 
@@ -292,15 +302,23 @@ npm run start:r2   # 终端 1
 npm run test:e2e   # 终端 2
 ```
 
-端到端测试会覆盖批量上传、拖拽上传、文件取回与 Content-Type、四种格式输出、配置自检提示和后台页面，截图输出在 `test/e2e/output/`。可用环境变量：`E2E_BASE_URL`（默认 http://localhost:8080）、`E2E_CHROMIUM`（指定 Chromium 可执行文件路径，用于无法下载 Playwright 自带浏览器的环境）。
-
-> 后台页面（/admin）从 cdn.jsdelivr.net 加载 Vue 与 Element UI，因此在无法访问该 CDN 的网络环境下会显示空白——端到端测试检测到这种情况会跳过后台检查而不是报失败。
+端到端测试会覆盖批量上传、拖拽上传、文件取回与 Content-Type、四种格式输出、中英文切换和 shadcn 管理后台，截图输出在 `test/e2e/output/`。可用环境变量：`E2E_BASE_URL`（默认 http://localhost:8080）、`E2E_CHROMIUM`（指定 Chromium 可执行文件路径，用于无法下载 Playwright 自带浏览器的环境）。
 
 ### 感谢
 
 Hostloc @feixiang 和@乌拉擦 提供的思路和代码
 
 ## 更新日志
+2026 年 8 月 8 日--shadcn/ui 首页、管理后台与双语界面
+
+- 首页迁移为 Vite、React、TypeScript、Tailwind CSS 与真实 shadcn/ui 组件，保留批量、拖拽、粘贴上传和四种链接格式
+- 移除随机必应壁纸与首页部署配置提示；`GET /api/config` 仍保留非敏感状态，供 API 与自定义前端使用
+- 新增中英文 locale，默认跟随浏览器语言并记住手动选择
+- 管理后台迁移为 React 与 shadcn/ui，支持表格/网格视图、搜索筛选排序、批量上传与管理、重命名以及完整异步状态
+- 删除旧 Vue 2、Element UI、jQuery 与外部 CDN 管理页面；屏蔽和白名单提示页同步使用新界面
+- 删除 `/index-nuxt.html`、`/index-md.html` 与 `_nuxt` 编译资源，不再提供旧版首页入口
+- Pages 构建产物改为 `dist`；Wrangler Direct Upload 统一使用 `npm run deploy`
+
 2026 年 7 月 25 日--部署自检与测试基建
 
 - 新增**部署自检**：`GET /api/config` 现在会返回 `ready` 与 `setup` 状态，首页在配置不完整时直接显示需要补哪个环境变量/绑定以及在哪里设置（只返回状态枚举，不回显任何配置值）

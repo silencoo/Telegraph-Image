@@ -42,6 +42,17 @@ export function unauthorizedResponse(reason) {
   return textResponse(reason, {
     status: 401,
     statusText: 'Unauthorized',
+    headers: {
+      ...plainTextHeaders(reason),
+      'WWW-Authenticate': BASIC_AUTH_CHALLENGE,
+    },
+  });
+}
+
+export function dashboardUnauthorizedResponse(reason = 'Authentication required.') {
+  return textResponse(reason, {
+    status: 401,
+    statusText: 'Unauthorized',
     headers: plainTextHeaders(reason),
   });
 }

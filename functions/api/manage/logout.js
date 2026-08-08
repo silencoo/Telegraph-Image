@@ -1,13 +1,28 @@
-export async function onRequest(context) {
-    // Contents of context object
-    const {
-      request, // same as existing Worker API
-      env, // same as existing Worker API
-      params, // if filename includes [id] or [[path]]
-      waitUntil, // same as ctx.waitUntil in existing Worker API
-      next, // used for middleware or to fetch assets
-      data, // arbitrary space for passing data between middlewares
-    } = context;
-    return new Response('Logged out.', { status: 401 });
+import { clearAdminSessionCookie } from '../../utils/admin-session.js';
+import { jsonResponse } from '../../utils/http.js';
 
-  }
+function logoutResponse(request) {
+  return jsonResponse(
+    { success: true },
+    {
+      headers: {
+        'Cache-Control': 'no-store',
+        'Set-Cookie': clearAdminSessionCookie(request),
+      },
+    },
+  );
+}
+
+export function onRequestPost(context) {
+  return logoutResponse(context.request);
+}
+
+export function onRequestGet(context) {
+  const response = logoutResponse(context.request);
+  const url = new URL(context.request.url);
+  response.headers.set('Location', `${url.origin}/admin.html`);
+  return new Response(response.body, {
+    status: 302,
+    headers: response.headers,
+  });
+}

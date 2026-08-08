@@ -1,9 +1,9 @@
 import {
     basicAuthentication,
-    basicAuthChallengeResponse,
     dashboardDisabledResponse,
-    unauthorizedResponse,
+    dashboardUnauthorizedResponse,
 } from "../../utils/auth.js";
+import { hasValidAdminSession, verifyAdminCredentials } from "../../utils/admin-session.js";
 import { isEmptyBinding } from "../../utils/http.js";
 
 async function errorHandling(context) {
@@ -14,7 +14,7 @@ async function errorHandling(context) {
     }
   }
 
-  function authentication(context) {
+  async function authentication(context) {
     if (isEmptyBinding(context.env.img_url)) {
         return dashboardDisabledResponse();
     }
@@ -23,8 +23,17 @@ async function errorHandling(context) {
         return context.next();
     }
 
+    const pathname = new URL(context.request.url).pathname;
+    if (pathname === '/api/manage/login') {
+        return context.next();
+    }
+
+    if (await hasValidAdminSession(context.request, context.env)) {
+        return context.next();
+    }
+
     if (!context.request.headers.has('Authorization')) {
-        return basicAuthChallengeResponse();
+        return dashboardUnauthorizedResponse();
     }
 
     const credentials = basicAuthentication(context.request);
@@ -32,8 +41,8 @@ async function errorHandling(context) {
         return credentials;
     }
 
-    if (context.env.BASIC_USER !== credentials.user || context.env.BASIC_PASS !== credentials.pass) {
-        return unauthorizedResponse('Invalid credentials.');
+    if (!await verifyAdminCredentials(context.env, credentials.user, credentials.pass)) {
+        return dashboardUnauthorizedResponse('Invalid credentials.');
     }
 
     return context.next();

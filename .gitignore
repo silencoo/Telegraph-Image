@@ -1,6 +1,8 @@
+node_modules/*
 node_modules/.bin/*
 node_modules/.mf/*
 .wrangler/*
+dist/*
 data/*
 data-broken/*
 test/e2e/output/*

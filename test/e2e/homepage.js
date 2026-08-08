@@ -32,13 +32,6 @@ function check(name, passed, detail = '') {
   console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
 }
 
-// Environment cannot exercise this check (e.g. no outbound network). Reported
-// but not counted as a failure, so an offline run still ends green.
-function skip(name, detail = '') {
-  results.push({ name, passed: true, skipped: true, detail });
-  console.log(`SKIP  ${name}${detail ? ' — ' + detail : ''}`);
-}
-
 function makePng(file, rgb) {
   // Minimal valid 1x1 PNG per colour so each upload is a distinct file.
   const zlib = require('zlib');
@@ -72,8 +65,8 @@ function makePng(file, rgb) {
   const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
   const page = await context.newPage();
 
-  // Script errors are defects; a blocked image/CDN host is the sandbox, not the
-  // code (the wallpaper slideshow degrades to the CSS gradient either way).
+  // Script errors are defects; a blocked third-party dashboard CDN is an
+  // environment limitation and is reported separately.
   const consoleErrors = [];
   const resourceErrors = [];
   page.on('console', m => {
@@ -91,6 +84,13 @@ function makePng(file, rgb) {
   check('首页加载', true, `title="${title}"`);
   check('SITE_NAME 经 /api/config 生效', bodyText.includes('E2E Test Host') || title.includes('E2E Test Host'),
     `title="${title}"`);
+
+  const initialLang = await page.locator('html').getAttribute('lang');
+  const localeButton = page.getByRole('button', { name: /Switch to English|切换到中文/ }).first();
+  await localeButton.click();
+  const switchedLang = await page.locator('html').getAttribute('lang');
+  check('中英文 locale 可切换', initialLang !== switchedLang, `${initialLang} → ${switchedLang}`);
+  await localeButton.click();
 
   await page.screenshot({ path: path.join(OUT, 'shot-1-home.png'), fullPage: true });
 
@@ -227,33 +227,24 @@ function makePng(file, rgb) {
   const adminLink = await page.locator('a[href*="admin"]').count();
   check('首页显示后台入口', adminLink > 0, `${adminLink} 个链接`);
 
-  // --- 8. dashboard loads and lists the uploads
+  // --- 8. React/shadcn dashboard loads and lists the uploads
   const adminCtx = await browser.newContext({ httpCredentials: { username: 'admin', password: '123' } });
   const admin = await adminCtx.newPage();
   const adminErrors = [];
   admin.on('pageerror', e => adminErrors.push(e.message));
-  const adminCdnFailures = [];
-  admin.on('requestfailed', r => { if (!r.url().includes('localhost')) adminCdnFailures.push(r.url()); });
   const adminResp = await admin.goto(BASE + '/admin', { waitUntil: 'networkidle' });
-  await admin.waitForTimeout(2500);
+  await admin.waitForTimeout(1000);
   const adminText = await admin.textContent('body');
-  const adminRows = await admin.locator('img[src*="/file/"], [class*=card], tr').count();
-  const adminRendered = adminRows > 0 || /r2-/.test(adminText);
-  const cdnBlocked = !adminRendered && adminCdnFailures.length > 0;
-  if (cdnBlocked) {
-    // admin.html pulls Vue + Element UI from cdn.jsdelivr.net; unreachable CDN
-    // means a blank dashboard, which is worth knowing but is not a code defect.
-    skip('后台页面加载并显示记录', `CDN 不可达（${adminCdnFailures.length} 个外部资源加载失败），此环境无法验证后台 UI`);
-  } else {
-    check('后台页面加载并显示记录', adminRendered,
-      `HTTP ${adminResp && adminResp.status()}, 元素 ${adminRows} 个, JS错误: ${adminErrors.slice(0,2).join('|') || 'none'}`);
-  }
+  const adminRows = await admin.locator('tr, article').count();
+  const adminRendered = /管理后台|Admin dashboard/.test(adminText) && adminRows > 0;
+  check('shadcn 后台页面加载并显示记录', adminRendered,
+    `HTTP ${adminResp && adminResp.status()}, 元素 ${adminRows} 个, JS错误: ${adminErrors.slice(0,2).join('|') || 'none'}`);
   await admin.screenshot({ path: path.join(OUT, 'shot-5-admin.png'), fullPage: true });
 
   // --- 9. no console errors
   check('无 JS 脚本错误', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | ') || 'none');
   if (resourceErrors.length) {
-    console.log(`INFO  ${resourceErrors.length} 个外部资源未加载（壁纸/CDN，属环境限制）`);
+    console.log(`INFO  ${resourceErrors.length} 个外部资源未加载（CDN，属环境限制）`);
   }
 
   await browser.close();
