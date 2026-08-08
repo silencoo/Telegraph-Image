@@ -8,6 +8,9 @@
     "dev:ui": "vite",
     "start": "npm run build && wrangler pages dev dist --kv \"img_url\" --r2 \"img_r2\" --port 8080 --binding BASIC_USER=admin --binding BASIC_PASS=123 --persist-to ./data",
     "start:r2": "npm run build && wrangler pages dev dist --kv \"img_url\" --r2 \"img_r2\" --port 8080 --binding BASIC_USER=admin --binding BASIC_PASS=123 --binding STORAGE_PROVIDER=r2 --binding disable_telemetry=true --persist-to ./data",
+    "setup": "node scripts/setup-cloudflare.mjs",
+    "setup:cloudflare": "node scripts/setup-cloudflare.mjs",
+    "admin:reset": "node scripts/setup-cloudflare.mjs --rotate-admin",
     "deploy": "npm run build && wrangler pages deploy dist"
   },
   "dependencies": {

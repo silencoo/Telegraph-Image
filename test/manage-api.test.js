@@ -331,7 +331,9 @@ describe('manage API authentication middleware', function () {
       request: new Request('https://example.com/api/manage/list'),
     }));
 
-    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.status, 503);
     assert.strictEqual(await res.text(), 'Dashboard is disabled. Please bind a KV namespace to use this feature.');
+    assert.strictEqual(res.headers.get('Content-Type'), 'text/plain;charset=UTF-8');
+    assert.strictEqual(res.headers.get('Cache-Control'), 'no-store');
   });
 });

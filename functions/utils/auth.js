@@ -26,7 +26,11 @@ export function basicAuthentication(request) {
 }
 
 export function dashboardDisabledResponse() {
-  return textResponse(DASHBOARD_DISABLED_MESSAGE, { status: 200 });
+  return textResponse(DASHBOARD_DISABLED_MESSAGE, {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: plainTextHeaders(DASHBOARD_DISABLED_MESSAGE),
+  });
 }
 
 export function basicAuthChallengeResponse() {
