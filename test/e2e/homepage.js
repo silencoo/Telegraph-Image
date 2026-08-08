@@ -91,6 +91,14 @@ function makePng(file, rgb) {
     !bodyText.includes('Upload files. Share them anywhere.') &&
     !bodyText.includes('上传文件，获得可分享链接'));
   check('首页不显示导航栏', await page.locator('header').count() === 0);
+  check('Bot 模式显示各文件类型的单文件上限',
+    /Bot mode file limits|Bot 模式单文件上限/.test(bodyText) &&
+    /Original image|原画质图片/.test(bodyText) &&
+    /Optimized image|优化图片/.test(bodyText) &&
+    /Video|视频/.test(bodyText) &&
+    /Audio|音频/.test(bodyText) &&
+    /Documents & other|文档与其他/.test(bodyText) &&
+    bodyText.includes('10 MB') && bodyText.includes('20 MB'));
 
   const pastebinTab = page.getByRole('tab', { name: /Pastebin|文本/ });
   check('提供文件与 Pastebin 标签切换', await pastebinTab.count() === 1);

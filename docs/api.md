@@ -26,6 +26,8 @@ curl -u 'username:password' -F "file=@file.zip" https://your-domain.example/uplo
 
 The response is a JSON array containing the uploaded file URL. With `ENABLE_SHORT_URLS=true`, the URL uses the configured short ID length.
 
+In Telegram storage mode, the effective per-file limits are 10 MB for images sent through `imageUploadMode=photo`, and 20 MB for original images, video, audio, documents, and other files. Telegram accepts larger non-photo uploads, but this project serves them through Bot API `getFile`, whose download limit is 20 MB.
+
 ## Pastebin
 
 The web interface converts entered text into a file and sends it through the same upload pipeline. Its returned URL follows the same storage and short-link settings.

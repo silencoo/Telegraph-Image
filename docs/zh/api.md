@@ -26,6 +26,8 @@ curl -u 'username:password' -F "file=@file.zip" https://your-domain.example/uplo
 
 响应是包含文件访问地址的 JSON 数组。设置 `ENABLE_SHORT_URLS=true` 后，返回地址会使用配置长度的短 ID。
 
+使用 Telegram 存储时，`imageUploadMode=photo` 的优化图片单文件有效上限为 10 MB；原画质图片、视频、音频、文档和其他文件均为 20 MB。Telegram 可以接收更大的非照片文件，但本项目通过 Bot API `getFile` 提供访问，其下载上限为 20 MB。
+
 ## Pastebin
 
 网页中的 Pastebin 会把输入文字转换为文件，并通过同一条上传流程发送。返回地址遵循相同的存储和短链接设置。
