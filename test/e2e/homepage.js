@@ -92,6 +92,18 @@ function makePng(file, rgb) {
     !bodyText.includes('上传文件，获得可分享链接'));
   check('首页不显示导航栏', await page.locator('header').count() === 0);
 
+  const pastebinTab = page.getByRole('tab', { name: /Pastebin|文本/ });
+  check('提供文件与 Pastebin 标签切换', await pastebinTab.count() === 1);
+  await pastebinTab.click();
+  const pasteEditor = page.getByLabel(/Content|正文/);
+  const pasteName = page.getByLabel(/File name|文件名/);
+  await pasteEditor.fill('E2E paste content');
+  check('Pastebin 提供文件名和正文编辑',
+    await pasteEditor.count() === 1 && await pasteName.count() === 1);
+  check('输入正文后可上传文本',
+    await page.getByRole('button', { name: /Upload text|上传文本/ }).isEnabled());
+  await page.getByRole('tab', { name: /Files|文件/ }).click();
+
   await page.screenshot({ path: path.join(OUT, 'shot-1-home.png'), fullPage: true });
 
   // --- 2. file input exists and accepts multiple files

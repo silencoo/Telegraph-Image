@@ -15,6 +15,7 @@ import {
   File,
   FileAudio,
   FileImage,
+  FileText,
   FileVideo,
   Inbox,
   Trash2,
@@ -34,6 +35,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -47,6 +49,7 @@ const FORMATS: LinkFormat[] = ["url", "markdown", "bbcode", "html"]
 
 type UploadStatus = "queued" | "uploading" | "success" | "error"
 type ImageUploadMode = "document" | "photo"
+type WorkspaceMode = "files" | "pastebin"
 
 interface UploadItem {
   error?: string
@@ -75,6 +78,9 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
   const [format, setFormat] = useState<LinkFormat>("url")
   const [dragActive, setDragActive] = useState(false)
   const [imageUploadMode, setImageUploadMode] = useState<ImageUploadMode>("document")
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("files")
+  const [pasteFileName, setPasteFileName] = useState("paste.txt")
+  const [pasteContent, setPasteContent] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
   const activeUploads = useRef(0)
   const pendingUploads = useRef<PendingUpload[]>([])
@@ -268,212 +274,299 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
     }
   }
 
+  function uploadPaste() {
+    if (!pasteContent.trim()) return
+
+    const normalizedName = (pasteFileName.trim() || "paste.txt").replace(/[\\/]/g, "-")
+    const fileName = /\.[a-z0-9]+$/i.test(normalizedName)
+      ? normalizedName
+      : `${normalizedName}.txt`
+    enqueueFiles([
+      new globalThis.File([pasteContent], fileName, {
+        type: "text/plain;charset=utf-8",
+      }),
+    ])
+  }
+
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-      <Card>
-        <CardHeader>
-          <CardTitle>{copy.uploadTitle}</CardTitle>
-          <CardDescription>{copy.uploadDescription}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {imageUploadModeAvailable ? (
-            <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3">
-              <div className="min-w-0">
-                <label htmlFor="image-upload-mode" className="text-sm font-medium">
-                  {copy.imageUploadModeTitle}
-                </label>
-                <p id="image-upload-mode-description" className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {imageUploadMode === "document"
-                    ? copy.imageUploadModeOriginalDescription
-                    : copy.imageUploadModeOptimizedDescription}
+    <Tabs
+      value={workspaceMode}
+      onValueChange={(value) => setWorkspaceMode(value as WorkspaceMode)}
+      className="gap-5"
+    >
+      <TabsList className="grid w-full grid-cols-2 sm:w-72" aria-label={copy.workspaceModeLabel}>
+        <TabsTrigger value="files">
+          <Upload aria-hidden="true" />
+          {copy.filesTab}
+        </TabsTrigger>
+        <TabsTrigger value="pastebin">
+          <FileText aria-hidden="true" />
+          {copy.pastebinTab}
+        </TabsTrigger>
+      </TabsList>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <div className="min-h-[31rem] lg:min-h-[37rem]">
+          <TabsContent value="files" className="mt-0 h-full">
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle>{copy.uploadTitle}</CardTitle>
+                <CardDescription>{copy.uploadDescription}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {imageUploadModeAvailable ? (
+                  <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3">
+                    <div className="min-w-0">
+                      <label htmlFor="image-upload-mode" className="text-sm font-medium">
+                        {copy.imageUploadModeTitle}
+                      </label>
+                      <p id="image-upload-mode-description" className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {imageUploadMode === "document"
+                          ? copy.imageUploadModeOriginalDescription
+                          : copy.imageUploadModeOptimizedDescription}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      <Switch
+                        id="image-upload-mode"
+                        checked={imageUploadMode === "document"}
+                        onCheckedChange={(checked) => setImageUploadMode(checked ? "document" : "photo")}
+                        aria-describedby="image-upload-mode-description"
+                      />
+                      <span className="text-xs font-medium text-muted-foreground" aria-hidden="true">
+                        {imageUploadMode === "document"
+                          ? copy.imageUploadModeOriginal
+                          : copy.imageUploadModeOptimized}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+                <div
+                  id="dropzone"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={copy.chooseFiles}
+                  onClick={openPicker}
+                  onKeyDown={handleDropKeyboard}
+                  onPaste={handleLocalPaste}
+                  onDragEnter={(event) => {
+                    event.preventDefault()
+                    setDragActive(true)
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setDragActive(false)
+                    }
+                  }}
+                  onDrop={handleDrop}
+                  className={cn(
+                    "group flex min-h-80 flex-col items-center justify-center rounded-xl border border-dashed px-6 py-10 text-center transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    dragActive
+                      ? "border-primary bg-primary/5 shadow-[inset_0_0_0_1px_var(--primary)]"
+                      : "border-border bg-muted/25 hover:border-primary/50 hover:bg-muted/45",
+                  )}
+                >
+                  <div className="mb-6 flex size-16 items-center justify-center rounded-2xl border bg-background text-primary shadow-sm">
+                    <Upload className="size-7" aria-hidden="true" />
+                  </div>
+                  <h2 className="text-lg font-semibold">
+                    {dragActive ? copy.dropActive : copy.dropTitle}
+                  </h2>
+                  <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                    {copy.dropHint}
+                  </p>
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="mt-6"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      openPicker()
+                    }}
+                  >
+                    <Upload aria-hidden="true" />
+                    {copy.chooseFiles}
+                  </Button>
+                  <div className="mt-5 flex flex-wrap justify-center gap-2">
+                    <Badge variant="secondary">{copy.multipleFiles}</Badge>
+                    <Badge variant="secondary">
+                      <Clipboard aria-hidden="true" />
+                      {copy.pasteSupported}
+                    </Badge>
+                  </div>
+                </div>
+                <input
+                  ref={inputRef}
+                  className="sr-only"
+                  type="file"
+                  multiple
+                  aria-label={copy.chooseFiles}
+                  onChange={handleInput}
+                  tabIndex={-1}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="pastebin" className="mt-0 h-full">
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle>{copy.pastebinTitle}</CardTitle>
+                <CardDescription>{copy.pastebinDescription}</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-1 flex-col gap-5">
+                <div className="space-y-2">
+                  <label htmlFor="paste-file-name" className="text-sm font-medium">
+                    {copy.pasteFileNameLabel}
+                  </label>
+                  <Input
+                    id="paste-file-name"
+                    value={pasteFileName}
+                    onChange={(event) => setPasteFileName(event.target.value)}
+                    placeholder={copy.pasteFileNamePlaceholder}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
+                  <div className="flex items-center justify-between gap-4">
+                    <label htmlFor="paste-content" className="text-sm font-medium">
+                      {copy.pasteContentLabel}
+                    </label>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {copy.characterCount(pasteContent.length)}
+                    </span>
+                  </div>
+                  <Textarea
+                    id="paste-content"
+                    value={pasteContent}
+                    onChange={(event) => setPasteContent(event.target.value)}
+                    placeholder={copy.pasteContentPlaceholder}
+                    className="min-h-64 flex-1 resize-none leading-6"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="lg"
+                    disabled={!pasteContent.trim()}
+                    onClick={uploadPaste}
+                  >
+                    <Upload aria-hidden="true" />
+                    {copy.uploadPaste}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </div>
+
+        <Card className="min-h-[31rem] lg:min-h-[37rem]">
+          <CardHeader className="border-b">
+            <CardTitle>{copy.uploadQueue}</CardTitle>
+            <CardDescription>{copy.uploadQueueDescription}</CardDescription>
+            {items.length ? (
+              <CardAction>
+                <Badge variant="outline">{copy.fileCount(items.length)}</Badge>
+              </CardAction>
+            ) : null}
+          </CardHeader>
+
+          <CardContent className="flex min-h-64 flex-1 flex-col px-0">
+            {items.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center px-6 py-14 text-center">
+                <span className="mb-4 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <Inbox className="size-5" aria-hidden="true" />
+                </span>
+                <p className="text-sm font-medium">{copy.emptyTitle}</p>
+                <p className="mt-1 max-w-xs text-sm leading-6 text-muted-foreground">
+                  {copy.emptyDescription}
                 </p>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-1.5">
-                <Switch
-                  id="image-upload-mode"
-                  checked={imageUploadMode === "document"}
-                  onCheckedChange={(checked) => setImageUploadMode(checked ? "document" : "photo")}
-                  aria-describedby="image-upload-mode-description"
-                />
-                <span className="text-xs font-medium text-muted-foreground" aria-hidden="true">
-                  {imageUploadMode === "document"
-                    ? copy.imageUploadModeOriginal
-                    : copy.imageUploadModeOptimized}
-                </span>
-              </div>
-            </div>
-          ) : null}
-          <div
-            id="dropzone"
-            role="button"
-            tabIndex={0}
-            aria-label={copy.chooseFiles}
-            onClick={openPicker}
-            onKeyDown={handleDropKeyboard}
-            onPaste={handleLocalPaste}
-            onDragEnter={(event) => {
-              event.preventDefault()
-              setDragActive(true)
-            }}
-            onDragOver={(event) => event.preventDefault()}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                setDragActive(false)
-              }
-            }}
-            onDrop={handleDrop}
-            className={cn(
-              "group flex min-h-80 flex-col items-center justify-center rounded-xl border border-dashed px-6 py-10 text-center transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              dragActive
-                ? "border-primary bg-primary/5 shadow-[inset_0_0_0_1px_var(--primary)]"
-                : "border-border bg-muted/25 hover:border-primary/50 hover:bg-muted/45",
-            )}
-          >
-            <div className="mb-6 flex size-16 items-center justify-center rounded-2xl border bg-background text-primary shadow-sm">
-              <Upload className="size-7" aria-hidden="true" />
-            </div>
-            <h2 className="text-lg font-semibold">
-              {dragActive ? copy.dropActive : copy.dropTitle}
-            </h2>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-              {copy.dropHint}
-            </p>
-            <Button
-              type="button"
-              size="lg"
-              className="mt-6"
-              onClick={(event) => {
-                event.stopPropagation()
-                openPicker()
-              }}
-            >
-              <Upload aria-hidden="true" />
-              {copy.chooseFiles}
-            </Button>
-            <div className="mt-5 flex flex-wrap justify-center gap-2">
-              <Badge variant="secondary">{copy.multipleFiles}</Badge>
-              <Badge variant="secondary">
-                <Clipboard aria-hidden="true" />
-                {copy.pasteSupported}
-              </Badge>
-            </div>
-          </div>
-          <input
-            ref={inputRef}
-            className="sr-only"
-            type="file"
-            multiple
-            aria-label={copy.chooseFiles}
-            onChange={handleInput}
-            tabIndex={-1}
-          />
-        </CardContent>
-      </Card>
-
-      <Card className="min-h-[31rem]">
-        <CardHeader className="border-b">
-          <CardTitle>{copy.uploadQueue}</CardTitle>
-          <CardDescription>{copy.uploadQueueDescription}</CardDescription>
-          {items.length ? (
-            <CardAction>
-              <Badge variant="outline">{copy.fileCount(items.length)}</Badge>
-            </CardAction>
-          ) : null}
-        </CardHeader>
-
-        <CardContent className="flex min-h-64 flex-1 flex-col px-0">
-          {items.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center px-6 py-14 text-center">
-              <span className="mb-4 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                <Inbox className="size-5" aria-hidden="true" />
-              </span>
-              <p className="text-sm font-medium">{copy.emptyTitle}</p>
-              <p className="mt-1 max-w-xs text-sm leading-6 text-muted-foreground">
-                {copy.emptyDescription}
-              </p>
-            </div>
-          ) : (
-            <div className="max-h-80 divide-y overflow-y-auto" aria-live="polite">
-              {items.map((item) => (
-                <UploadRow
-                  key={item.id}
-                  item={item}
-                  copy={copy}
-                  locale={locale}
-                  currentFormat={format}
-                  onCopy={copyText}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-
-        {completed.length ? (
-          <>
-            <Separator />
-            <div className="space-y-4 px-6 pb-6">
-              <div className="flex items-start justify-between gap-4 pt-5">
-                <div>
-                  <h3 className="text-sm font-semibold">{copy.outputTitle}</h3>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {copy.outputDescription}
-                  </p>
-                </div>
-                <Button type="button" variant="ghost" size="sm" onClick={clearAll}>
-                  <Trash2 aria-hidden="true" />
-                  {copy.clear}
-                </Button>
-              </div>
-
-              <Tabs value={format} onValueChange={(value) => setFormat(value as LinkFormat)}>
-                <TabsList className="grid w-full grid-cols-4">
-                  {FORMATS.map((item) => (
-                    <TabsTrigger key={item} value={item} className="text-xs sm:text-sm">
-                      {item === "url" ? "URL" : item === "html" ? "HTML" : item === "bbcode" ? "BBCode" : "Markdown"}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                {FORMATS.map((item) => (
-                  <TabsContent key={item} value={item}>
-                    <Textarea
-                      readOnly
-                      spellCheck={false}
-                      value={
-                        item === format
-                          ? output
-                          : completed
-                              .map((file) =>
-                                formatLink(
-                                  { fileName: file.file.name, url: file.resultUrl! },
-                                  item,
-                                ),
-                              )
-                              .join("\n")
-                      }
-                      aria-label={`${copy.outputTitle} — ${item}`}
-                      className="min-h-24 resize-y font-mono text-xs leading-5"
-                    />
-                  </TabsContent>
+            ) : (
+              <div className="max-h-80 divide-y overflow-y-auto" aria-live="polite">
+                {items.map((item) => (
+                  <UploadRow
+                    key={item.id}
+                    item={item}
+                    copy={copy}
+                    locale={locale}
+                    currentFormat={format}
+                    onCopy={copyText}
+                  />
                 ))}
-              </Tabs>
-              <div className="flex justify-end">
-                <Button type="button" onClick={() => copyText(output)}>
-                  <Copy aria-hidden="true" />
-                  {copy.copyAll}
-                </Button>
               </div>
+            )}
+          </CardContent>
+
+          {completed.length ? (
+            <>
+              <Separator />
+              <div className="space-y-4 px-6 pb-6">
+                <div className="flex items-start justify-between gap-4 pt-5">
+                  <div>
+                    <h3 className="text-sm font-semibold">{copy.outputTitle}</h3>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {copy.outputDescription}
+                    </p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={clearAll}>
+                    <Trash2 aria-hidden="true" />
+                    {copy.clear}
+                  </Button>
+                </div>
+
+                <Tabs value={format} onValueChange={(value) => setFormat(value as LinkFormat)}>
+                  <TabsList className="grid w-full grid-cols-4">
+                    {FORMATS.map((item) => (
+                      <TabsTrigger key={item} value={item} className="text-xs sm:text-sm">
+                        {item === "url" ? "URL" : item === "html" ? "HTML" : item === "bbcode" ? "BBCode" : "Markdown"}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {FORMATS.map((item) => (
+                    <TabsContent key={item} value={item}>
+                      <Textarea
+                        readOnly
+                        spellCheck={false}
+                        value={
+                          item === format
+                            ? output
+                            : completed
+                                .map((file) =>
+                                  formatLink(
+                                    { fileName: file.file.name, url: file.resultUrl! },
+                                    item,
+                                  ),
+                                )
+                                .join("\n")
+                        }
+                        aria-label={`${copy.outputTitle} — ${item}`}
+                        className="min-h-24 resize-y font-mono text-xs leading-5"
+                      />
+                    </TabsContent>
+                  ))}
+                </Tabs>
+                <div className="flex justify-end">
+                  <Button type="button" onClick={() => copyText(output)}>
+                    <Copy aria-hidden="true" />
+                    {copy.copyAll}
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : items.length ? (
+            <div className="flex justify-end border-t px-6 py-4">
+              <Button type="button" variant="ghost" size="sm" onClick={clearAll} aria-label={copy.clearQueue}>
+                <Trash2 aria-hidden="true" />
+                {copy.clear}
+              </Button>
             </div>
-          </>
-        ) : items.length ? (
-          <div className="flex justify-end border-t px-6 py-4">
-            <Button type="button" variant="ghost" size="sm" onClick={clearAll} aria-label={copy.clearQueue}>
-              <Trash2 aria-hidden="true" />
-              {copy.clear}
-            </Button>
-          </div>
-        ) : null}
-      </Card>
-    </div>
+          ) : null}
+        </Card>
+      </div>
+    </Tabs>
   )
 }
 
