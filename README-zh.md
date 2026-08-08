@@ -2,7 +2,7 @@
 
 基于 Cloudflare Pages 的文件托管服务，文件可存储到 Telegram Bot API 或 Cloudflare R2。
 
-[English](README.md) | 中文
+[在线文档](https://jetpack-1.gitbook.io/telegraph-image-docs) | [English](README.md) | 中文
 
 ## 功能
 
@@ -73,6 +73,7 @@ npm run setup -- --project images --yes
 
 ## 文档
 
+- [浏览已发布的 GitBook](https://jetpack-1.gitbook.io/telegraph-image-docs)
 - [部署与更新](docs/zh/deployment.md)
 - [配置参考](docs/zh/configuration.md)
 - [上传 API](docs/zh/api.md)

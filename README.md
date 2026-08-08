@@ -2,7 +2,7 @@
 
 Cloudflare Pages file hosting backed by the Telegram Bot API or Cloudflare R2.
 
-English | [中文](README-zh.md)
+[Online documentation](https://jetpack-1.gitbook.io/telegraph-image-docs) | English | [中文](README-zh.md)
 
 ## Features
 
@@ -73,6 +73,7 @@ See [configuration](docs/configuration.md) for all variables and bindings.
 
 ## Documentation
 
+- [Browse the published GitBook](https://jetpack-1.gitbook.io/telegraph-image-docs)
 - [Deployment and updates](docs/deployment.md)
 - [Configuration reference](docs/configuration.md)
 - [Upload API](docs/api.md)
