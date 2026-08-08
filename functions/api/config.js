@@ -15,6 +15,7 @@ export async function onRequestGet(context) {
         enableShortUrls: isShortUrlsEnabled(env),
         uploadRequiresAuth: !isEmptyBinding(env.UPLOAD_BASIC_USER) && !isEmptyBinding(env.UPLOAD_BASIC_PASS),
         showAdminEntry: env.HIDE_ADMIN_ENTRY !== 'true',
+        imageUploadModeAvailable: setup.checks.storageProvider === 'telegram',
         // Deployment self-check so a misconfigured site says so instead of
         // failing silently on the first upload. Enum status only, no values.
         ready: setup.ready,

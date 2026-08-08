@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import type { Copy as LocalizedCopy, Locale } from "@/i18n"
@@ -45,6 +46,7 @@ const MAX_CONCURRENT = 3
 const FORMATS: LinkFormat[] = ["url", "markdown", "bbcode", "html"]
 
 type UploadStatus = "queued" | "uploading" | "success" | "error"
+type ImageUploadMode = "document" | "photo"
 
 interface UploadItem {
   error?: string
@@ -59,17 +61,20 @@ interface UploadItem {
 interface PendingUpload {
   file: globalThis.File
   id: string
+  imageUploadMode: ImageUploadMode
 }
 
 interface UploadWorkspaceProps {
   copy: LocalizedCopy
+  imageUploadModeAvailable: boolean
   locale: Locale
 }
 
-export function UploadWorkspace({ copy, locale }: UploadWorkspaceProps) {
+export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: UploadWorkspaceProps) {
   const [items, setItems] = useState<UploadItem[]>([])
   const [format, setFormat] = useState<LinkFormat>("url")
   const [dragActive, setDragActive] = useState(false)
+  const [imageUploadMode, setImageUploadMode] = useState<ImageUploadMode>("document")
   const inputRef = useRef<HTMLInputElement>(null)
   const activeUploads = useRef(0)
   const pendingUploads = useRef<PendingUpload[]>([])
@@ -115,7 +120,7 @@ export function UploadWorkspace({ copy, locale }: UploadWorkspaceProps) {
 
     document.addEventListener("paste", handlePaste)
     return () => document.removeEventListener("paste", handlePaste)
-  }, [])
+  }, [imageUploadMode])
 
   function enqueueFiles(files: globalThis.File[]) {
     if (!files.length) return
@@ -126,7 +131,7 @@ export function UploadWorkspace({ copy, locale }: UploadWorkspaceProps) {
         ? URL.createObjectURL(file)
         : undefined
       if (previewUrl) previewUrls.current.add(previewUrl)
-      pendingUploads.current.push({ file, id })
+      pendingUploads.current.push({ file, id, imageUploadMode })
       return { file, id, previewUrl, progress: 0, status: "queued" }
     })
 
@@ -149,9 +154,10 @@ export function UploadWorkspace({ copy, locale }: UploadWorkspaceProps) {
     )
   }
 
-  function uploadFile({ file, id }: PendingUpload) {
+  function uploadFile({ file, id, imageUploadMode: queuedImageUploadMode }: PendingUpload) {
     const body = new FormData()
     body.append("file", file)
+    body.append("imageUploadMode", queuedImageUploadMode)
 
     const request = new XMLHttpRequest()
     requests.current.set(id, request)
@@ -270,6 +276,33 @@ export function UploadWorkspace({ copy, locale }: UploadWorkspaceProps) {
           <CardDescription>{copy.uploadDescription}</CardDescription>
         </CardHeader>
         <CardContent>
+          {imageUploadModeAvailable ? (
+            <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3">
+              <div className="min-w-0">
+                <label htmlFor="image-upload-mode" className="text-sm font-medium">
+                  {copy.imageUploadModeTitle}
+                </label>
+                <p id="image-upload-mode-description" className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {imageUploadMode === "document"
+                    ? copy.imageUploadModeOriginalDescription
+                    : copy.imageUploadModeOptimizedDescription}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
+                <Switch
+                  id="image-upload-mode"
+                  checked={imageUploadMode === "document"}
+                  onCheckedChange={(checked) => setImageUploadMode(checked ? "document" : "photo")}
+                  aria-describedby="image-upload-mode-description"
+                />
+                <span className="text-xs font-medium text-muted-foreground" aria-hidden="true">
+                  {imageUploadMode === "document"
+                    ? copy.imageUploadModeOriginal
+                    : copy.imageUploadModeOptimized}
+                </span>
+              </div>
+            </div>
+          ) : null}
           <div
             id="dropzone"
             role="button"

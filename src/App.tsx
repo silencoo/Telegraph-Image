@@ -10,6 +10,7 @@ import { useLocale } from "@/hooks/use-locale"
 
 interface SiteConfig {
   backgroundImage: string
+  imageUploadModeAvailable: boolean
   showAdminEntry: boolean
   siteName: string
   siteTitle: string
@@ -17,6 +18,7 @@ interface SiteConfig {
 
 const defaultConfig: SiteConfig = {
   backgroundImage: "",
+  imageUploadModeAvailable: true,
   showAdminEntry: true,
   siteName: "Telegraph-Image",
   siteTitle: "",
@@ -118,7 +120,11 @@ export default function App() {
           </p>
         </section>
 
-        <UploadWorkspace locale={locale} copy={copy} />
+        <UploadWorkspace
+          locale={locale}
+          copy={copy}
+          imageUploadModeAvailable={config.imageUploadModeAvailable}
+        />
       </main>
 
       <Toaster position="bottom-center" richColors closeButton />

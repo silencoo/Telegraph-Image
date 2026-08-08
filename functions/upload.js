@@ -28,10 +28,24 @@ export async function onRequestPost(context) {
             throw new Error('No file uploaded');
         }
 
+        const requestedImageUploadMode = formData.get('imageUploadMode');
+        if (
+            requestedImageUploadMode !== null
+            && requestedImageUploadMode !== 'photo'
+            && requestedImageUploadMode !== 'document'
+        ) {
+            return jsonResponse({ error: 'Invalid image upload mode' }, { status: 400 });
+        }
+        const imageUploadMode = requestedImageUploadMode || 'photo';
+
         const fileName = uploadFile.name;
         const fileExtension = fileName.split('.').pop().toLowerCase();
 
-        const longId = await provider.upload(env, uploadFile, { fileName, fileExtension });
+        const longId = await provider.upload(env, uploadFile, {
+            fileName,
+            fileExtension,
+            imageUploadMode,
+        });
         let shortId = null;
 
         // 将文件信息保存到 KV 存储

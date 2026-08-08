@@ -18,6 +18,7 @@ describe('/api/config endpoint', function () {
       enableShortUrls: false,
       uploadRequiresAuth: false,
       showAdminEntry: true,
+      imageUploadModeAvailable: true,
     });
 
     // an empty env is not a usable deployment, and the response says why
@@ -49,6 +50,7 @@ describe('/api/config endpoint', function () {
       enableShortUrls: true,
       uploadRequiresAuth: true,
       showAdminEntry: false,
+      imageUploadModeAvailable: true,
     });
     assert.ok(setup, 'setup status is always present');
     assert.ok(Array.isArray(problems));
@@ -65,6 +67,17 @@ describe('/api/config endpoint', function () {
     assert.strictEqual(body.ready, true);
     assert.deepStrictEqual(body.problems, []);
     assert.strictEqual(body.setup.storageProvider, 'telegram');
+  });
+
+  it('hides Telegram image modes when R2 storage is selected', async function () {
+    const { onRequestGet } = await import('../functions/api/config.js');
+    const res = await onRequestGet(makeContext({
+      env: { STORAGE_PROVIDER: 'r2', img_r2: {} },
+    }));
+
+    const body = JSON.parse(await res.text());
+    assert.strictEqual(body.imageUploadModeAvailable, false);
+    assert.strictEqual(body.setup.storageProvider, 'r2');
   });
 
   it('never leaks unrelated environment variables', async function () {
