@@ -91,8 +91,7 @@ function makePng(file, rgb) {
     !bodyText.includes('Upload files. Share them anywhere.') &&
     !bodyText.includes('上传文件，获得可分享链接'));
   check('首页不显示导航栏', await page.locator('header').count() === 0);
-  check('Bot 模式显示各文件类型的单文件上限',
-    /Bot mode file limits|Bot 模式单文件上限/.test(bodyText) &&
+  check('Bot 模式在标签行显示各文件类型的单文件上限',
     /Original image|原画质图片/.test(bodyText) &&
     /Optimized image|优化图片/.test(bodyText) &&
     /Video|视频/.test(bodyText) &&

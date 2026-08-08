@@ -18,7 +18,6 @@ import {
   FileText,
   FileVideo,
   Inbox,
-  Info,
   Trash2,
   Upload,
   XCircle,
@@ -295,16 +294,19 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
       onValueChange={(value) => setWorkspaceMode(value as WorkspaceMode)}
       className="gap-5"
     >
-      <TabsList className="grid w-full grid-cols-2 sm:w-72" aria-label={copy.workspaceModeLabel}>
-        <TabsTrigger value="files">
-          <Upload aria-hidden="true" />
-          {copy.filesTab}
-        </TabsTrigger>
-        <TabsTrigger value="pastebin">
-          <FileText aria-hidden="true" />
-          {copy.pastebinTab}
-        </TabsTrigger>
-      </TabsList>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <TabsList className="grid w-full grid-cols-2 sm:w-72" aria-label={copy.workspaceModeLabel}>
+          <TabsTrigger value="files">
+            <Upload aria-hidden="true" />
+            {copy.filesTab}
+          </TabsTrigger>
+          <TabsTrigger value="pastebin">
+            <FileText aria-hidden="true" />
+            {copy.pastebinTab}
+          </TabsTrigger>
+        </TabsList>
+        {imageUploadModeAvailable ? <TelegramUploadLimits copy={copy} /> : null}
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
         <div className="min-h-[31rem] lg:min-h-[37rem]">
@@ -316,33 +318,30 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
               </CardHeader>
               <CardContent>
                 {imageUploadModeAvailable ? (
-                  <div className="mb-4 space-y-3">
-                    <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3">
-                      <div className="min-w-0">
-                        <label htmlFor="image-upload-mode" className="text-sm font-medium">
-                          {copy.imageUploadModeTitle}
-                        </label>
-                        <p id="image-upload-mode-description" className="mt-1 text-xs leading-5 text-muted-foreground">
-                          {imageUploadMode === "document"
-                            ? copy.imageUploadModeOriginalDescription
-                            : copy.imageUploadModeOptimizedDescription}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1.5">
-                        <Switch
-                          id="image-upload-mode"
-                          checked={imageUploadMode === "document"}
-                          onCheckedChange={(checked) => setImageUploadMode(checked ? "document" : "photo")}
-                          aria-describedby="image-upload-mode-description"
-                        />
-                        <span className="text-xs font-medium text-muted-foreground" aria-hidden="true">
-                          {imageUploadMode === "document"
-                            ? copy.imageUploadModeOriginal
-                            : copy.imageUploadModeOptimized}
-                        </span>
-                      </div>
+                  <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3">
+                    <div className="min-w-0">
+                      <label htmlFor="image-upload-mode" className="text-sm font-medium">
+                        {copy.imageUploadModeTitle}
+                      </label>
+                      <p id="image-upload-mode-description" className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {imageUploadMode === "document"
+                          ? copy.imageUploadModeOriginalDescription
+                          : copy.imageUploadModeOptimizedDescription}
+                      </p>
                     </div>
-                    <TelegramUploadLimits copy={copy} imageUploadMode={imageUploadMode} />
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      <Switch
+                        id="image-upload-mode"
+                        checked={imageUploadMode === "document"}
+                        onCheckedChange={(checked) => setImageUploadMode(checked ? "document" : "photo")}
+                        aria-describedby="image-upload-mode-description"
+                      />
+                      <span className="text-xs font-medium text-muted-foreground" aria-hidden="true">
+                        {imageUploadMode === "document"
+                          ? copy.imageUploadModeOriginal
+                          : copy.imageUploadModeOptimized}
+                      </span>
+                    </div>
                   </div>
                 ) : null}
                 <div
@@ -574,55 +573,26 @@ export function UploadWorkspace({ copy, imageUploadModeAvailable, locale }: Uplo
   )
 }
 
-interface TelegramUploadLimitsProps {
-  copy: LocalizedCopy
-  imageUploadMode: ImageUploadMode
-}
-
-function TelegramUploadLimits({ copy, imageUploadMode }: TelegramUploadLimitsProps) {
+function TelegramUploadLimits({ copy }: { copy: LocalizedCopy }) {
   const limits = [
-    { active: imageUploadMode === "document", icon: FileImage, label: copy.botLimitImageOriginal, size: "20 MB" },
-    { active: imageUploadMode === "photo", icon: FileImage, label: copy.botLimitImageOptimized, size: "10 MB" },
-    { active: false, icon: FileVideo, label: copy.botLimitVideo, size: "20 MB" },
-    { active: false, icon: FileAudio, label: copy.botLimitAudio, size: "20 MB" },
-    { active: false, icon: FileText, label: copy.botLimitDocument, size: "20 MB" },
+    [copy.botLimitImageOriginal, "20 MB"],
+    [copy.botLimitImageOptimized, "10 MB"],
+    [copy.botLimitVideo, "20 MB"],
+    [copy.botLimitAudio, "20 MB"],
+    [copy.botLimitDocument, "20 MB"],
   ]
 
   return (
-    <aside
+    <ul
       role="note"
-      aria-labelledby="bot-upload-limits-title"
-      className="rounded-lg border border-primary/20 bg-primary/[0.035] px-4 py-3"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] leading-4 text-muted-foreground sm:justify-end"
     >
-      <div className="flex items-start gap-2.5">
-        <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <p id="bot-upload-limits-title" className="text-sm font-medium">
-            {copy.botUploadLimitsTitle}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            {copy.botUploadLimitsDescription}
-          </p>
-        </div>
-      </div>
-      <dl className="mt-3 grid grid-cols-2 gap-2">
-        {limits.map(({ active, icon: Icon, label, size }) => (
-          <div
-            key={label}
-            className={cn(
-              "rounded-md border bg-background/80 px-2.5 py-2",
-              active && "border-primary/40 bg-primary/5",
-            )}
-          >
-            <dt className="flex items-center gap-1.5 text-[0.6875rem] leading-4 text-muted-foreground">
-              <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-              <span>{label}</span>
-            </dt>
-            <dd className="mt-0.5 text-sm font-semibold tabular-nums">{size}</dd>
-          </div>
-        ))}
-      </dl>
-    </aside>
+      {limits.map(([label, size]) => (
+        <li key={label} className="whitespace-nowrap">
+          {label} <span className="font-medium tabular-nums text-foreground/75">{size}</span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
