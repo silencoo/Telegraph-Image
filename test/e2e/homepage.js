@@ -86,11 +86,11 @@ function makePng(file, rgb) {
     `title="${title}"`);
 
   const initialLang = await page.locator('html').getAttribute('lang');
-  const localeButton = page.getByRole('button', { name: /Switch to English|切换到中文/ }).first();
-  await localeButton.click();
-  const switchedLang = await page.locator('html').getAttribute('lang');
-  check('中英文 locale 可切换', initialLang !== switchedLang, `${initialLang} → ${switchedLang}`);
-  await localeButton.click();
+  check('根据浏览器或本地记录设置 locale', ['zh-CN', 'en'].includes(initialLang), initialLang);
+  check('首页不显示介绍文案',
+    !bodyText.includes('Upload files. Share them anywhere.') &&
+    !bodyText.includes('上传文件，获得可分享链接'));
+  check('首页不显示导航栏', await page.locator('header').count() === 0);
 
   await page.screenshot({ path: path.join(OUT, 'shot-1-home.png'), fullPage: true });
 
@@ -223,9 +223,9 @@ function makePng(file, rgb) {
   check('拖拽上传生效', afterDrop > beforeDrop, `拖拽前 ${beforeDrop} 条 → 拖拽后 ${afterDrop} 条 (drop target: ${dropTarget})`);
   await page.screenshot({ path: path.join(OUT, 'shot-4-dragdrop.png'), fullPage: true });
 
-  // --- 7. admin entry link present (HIDE_ADMIN_ENTRY unset)
+  // --- 7. admin route remains available without a homepage navigation link
   const adminLink = await page.locator('a[href*="admin"]').count();
-  check('首页显示后台入口', adminLink > 0, `${adminLink} 个链接`);
+  check('首页不显示后台入口', adminLink === 0, `${adminLink} 个链接`);
 
   // --- 8. React/shadcn dashboard loads and lists the uploads
   const adminCtx = await browser.newContext({ httpCredentials: { username: 'admin', password: '123' } });

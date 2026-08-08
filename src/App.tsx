@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react"
-import { Languages, LayoutDashboard } from "lucide-react"
 
-import { BrandMark } from "@/components/brand-mark"
 import { UploadWorkspace } from "@/components/upload-workspace"
-import { Button } from "@/components/ui/button"
 import { Toaster } from "@/components/ui/sonner"
 import { messages } from "@/i18n"
 import { useLocale } from "@/hooks/use-locale"
@@ -11,7 +8,6 @@ import { useLocale } from "@/hooks/use-locale"
 interface SiteConfig {
   backgroundImage: string
   imageUploadModeAvailable: boolean
-  showAdminEntry: boolean
   siteName: string
   siteTitle: string
 }
@@ -19,13 +15,12 @@ interface SiteConfig {
 const defaultConfig: SiteConfig = {
   backgroundImage: "",
   imageUploadModeAvailable: true,
-  showAdminEntry: true,
   siteName: "Telegraph-Image",
   siteTitle: "",
 }
 
 export default function App() {
-  const { locale, toggleLocale } = useLocale()
+  const { locale } = useLocale()
   const copy = messages[locale]
   const [config, setConfig] = useState(defaultConfig)
 
@@ -76,50 +71,7 @@ export default function App() {
         {copy.skipToContent}
       </a>
 
-      <header className="border-b bg-background/90 backdrop-blur-sm">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-          <a href="/" className="flex min-w-0 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <BrandMark />
-            <span className="truncate text-sm font-semibold tracking-tight sm:text-base">
-              {config.siteName}
-            </span>
-          </a>
-
-          <nav className="flex shrink-0 items-center gap-1" aria-label={copy.utilityNavigation}>
-            {config.showAdminEntry ? (
-              <Button variant="ghost" size="sm" asChild>
-                <a href="/admin" aria-label={copy.openAdmin}>
-                  <LayoutDashboard aria-hidden="true" />
-                  <span className="hidden sm:inline">{copy.admin}</span>
-                </a>
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={toggleLocale}
-              aria-label={copy.switchLanguage}
-            >
-              <Languages className="hidden sm:block" aria-hidden="true" />
-              <span className="sm:hidden">{locale === "zh-CN" ? "EN" : "中"}</span>
-              <span className="hidden sm:inline">{copy.switchLanguageLabel}</span>
-            </Button>
-          </nav>
-        </div>
-      </header>
-
-      <main id="main-content" className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
-        <section className="mb-8 max-w-3xl sm:mb-10" aria-labelledby="page-title">
-          <p className="mb-3 text-sm font-medium text-primary">{copy.eyebrow}</p>
-          <h1 id="page-title" className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
-            {copy.title}
-          </h1>
-          <p className="mt-4 max-w-2xl text-pretty text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7">
-            {copy.description}
-          </p>
-        </section>
-
+      <main id="main-content" className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
         <UploadWorkspace
           locale={locale}
           copy={copy}
